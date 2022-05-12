@@ -1,5 +1,6 @@
 from functools import partial
 
+import cv2
 import torch
 import torch.nn as nn
 import numpy as np
@@ -469,15 +470,29 @@ class VoxelBackBone8xFusion(nn.Module):
                     image_with_voxelfeatures.append(image_with_voxelfeature)
 
             if 'ACTR' in self.fusion_method:
+                n_max = 0
                 pts_feats_b = torch.zeros((batch_size, self.max_num_nev, x.features.shape[1])).cuda()
                 coor_2d_b = torch.zeros((batch_size, self.max_num_nev, 2)).cuda()
                 pts_b = torch.zeros((batch_size, self.max_num_nev, 3)).cuda()
                 for b in range(batch_size):
+                    if False:
+                        img = (batch_dict['images'][b] * 255).to(torch.int).permute((1, 2, 0)).cpu().detach().numpy().astype(np.uint8)[..., [2, 1, 0]]
+                        voxels_2d = (coor_2d_list[b] * np.array([w, h])).astype(np.int)
+
+                        for pts in voxels_2d:
+                            if pts[0] < 0 or pts[1] < 0 or pts[1] > h or pts[0] > w:
+                                continue
+                            img = cv2.circle(img.copy(), (pts[0], pts[1]), radius=1, color=(0, 0, 255), thickness=-1)
+                        cv2.imwrite('test.png', img)
+                        import pdb; pdb.set_trace()
+                        abcd = 1
+
                     pts_b[b, :pts_list[b].shape[0]] = pts_list[b]
                     coor_2d_b[b, :pts_list[b].shape[0]] = torch.tensor(coor_2d_list[b]).cuda()
                     pts_feats_b[b, :pts_list[b].shape[0]] = pts_feats_list[b]
-                enh_feat = self.actr(v_feat=pts_feats_b, grid=coor_2d_b,
-                                     i_feats=[x_rgb], lidar_grid=pts_b[..., self.inv_idx])
+                    n_max = max(n_max, pts_list[b].shape[0])
+                enh_feat = self.actr(v_feat=pts_feats_b[:, :n_max], grid=coor_2d_b[:, :n_max],
+                                     i_feats=[x_rgb], lidar_grid=pts_b[:, :n_max, self.inv_idx])
                 enh_feat_cat = torch.cat(
                     [f[:np] for f, np in zip(enh_feat, num_points)])
                 if fuse_sum:
