@@ -2,10 +2,21 @@ CLASS_NAMES: ['Car']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    GET_ITEM_LIST: ["images", "points", "calib_matricies", "gt_boxes2d"]
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
             - NAME: gt_sampling
+
+              AUG_WITH_IMAGE: True # use PC-Image Aug
+              JOINT_SAMPLE: True # joint sample with point
+              KEEP_RAW: False # keep original PC
+              POINT_REFINE: True # refine points with different calib
+              BOX_IOU_THRES: 0.5
+              IMG_AUG_TYPE: by_depth
+              AUG_USE_TYPE: annotation
+              IMG_ROOT_PATH: training/image_2
+
               USE_ROAD_PLANE: True
               DB_INFO_PATH:
                   - kitti_dbinfos_train.pkl
@@ -36,7 +47,11 @@ MODEL:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x
+        NAME: VoxelBackBone8xFusion
+        USE_IMG: True
+        FUSION_POS: 1
+        FUSION_METHOD: MVX
+        IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
 
     MAP_TO_BEV:
         NAME: HeightCompression

@@ -1,20 +1,32 @@
-CLASS_NAMES: ['Car']
+CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    GET_ITEM_LIST: ["images", "points", "calib_matricies", "gt_boxes2d"]
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
+
             - NAME: gt_sampling
+
+              AUG_WITH_IMAGE: True # use PC-Image Aug
+              JOINT_SAMPLE: True # joint sample with point
+              KEEP_RAW: False # keep original PC
+              POINT_REFINE: True # refine points with different calib
+              BOX_IOU_THRES: 0.5
+              IMG_AUG_TYPE: by_depth
+              AUG_USE_TYPE: annotation
+              IMG_ROOT_PATH: training/image_2
+
               USE_ROAD_PLANE: True
               DB_INFO_PATH:
                   - kitti_dbinfos_train.pkl
               PREPARE: {
-                 filter_by_min_points: ['Car:5'],
-                 filter_by_difficulty: [-1],
+                  filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
+                  filter_by_difficulty: [-1],
               }
 
-              SAMPLE_GROUPS: ['Car:15']
+              SAMPLE_GROUPS: ['Car:15','Pedestrian:10', 'Cyclist:10']
               NUM_POINT_FEATURES: 4
               DATABASE_WITH_FAKELIDAR: False
               REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
@@ -28,15 +40,19 @@ DATA_CONFIG:
 
             - NAME: random_world_scaling
               WORLD_SCALE_RANGE: [0.95, 1.05]
-     
+
 MODEL:
-    NAME: VoxelRCNN
+    NAME: PVRCNN
 
     VFE:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x
+        NAME: VoxelBackBone8xFusion
+        USE_IMG: True
+        FUSION_POS: 1
+        FUSION_METHOD: MVX
+        IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -47,9 +63,9 @@ MODEL:
 
         LAYER_NUMS: [5, 5]
         LAYER_STRIDES: [1, 2]
-        NUM_FILTERS: [64, 128]
+        NUM_FILTERS: [128, 256]
         UPSAMPLE_STRIDES: [1, 2]
-        NUM_UPSAMPLE_FILTERS: [128, 128]
+        NUM_UPSAMPLE_FILTERS: [256, 256]
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -71,6 +87,26 @@ MODEL:
                 'matched_threshold': 0.6,
                 'unmatched_threshold': 0.45
             },
+            {
+                'class_name': 'Pedestrian',
+                'anchor_sizes': [[0.8, 0.6, 1.73]],
+                'anchor_rotations': [0, 1.57],
+                'anchor_bottom_heights': [-0.6],
+                'align_center': False,
+                'feature_map_stride': 8,
+                'matched_threshold': 0.5,
+                'unmatched_threshold': 0.35
+            },
+            {
+                'class_name': 'Cyclist',
+                'anchor_sizes': [[1.76, 0.6, 1.73]],
+                'anchor_rotations': [0, 1.57],
+                'anchor_bottom_heights': [-0.6],
+                'align_center': False,
+                'feature_map_stride': 8,
+                'matched_threshold': 0.5,
+                'unmatched_threshold': 0.35
+            }
         ]
 
         TARGET_ASSIGNER_CONFIG:
@@ -89,8 +125,55 @@ MODEL:
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
+    PFE:
+        NAME: VoxelSetAbstraction
+        POINT_SOURCE: raw_points
+        NUM_KEYPOINTS: 2048
+        NUM_OUTPUT_FEATURES: 128
+        SAMPLE_METHOD: FPS
+
+        FEATURES_SOURCE: ['bev', 'x_conv1', 'x_conv2', 'x_conv3', 'x_conv4', 'raw_points']
+        SA_LAYER:
+            raw_points:
+                MLPS: [[16, 16], [16, 16]]
+                POOL_RADIUS: [0.4, 0.8]
+                NSAMPLE: [16, 16]
+            x_conv1:
+                DOWNSAMPLE_FACTOR: 1
+                MLPS: [[16, 16], [16, 16]]
+                POOL_RADIUS: [0.4, 0.8]
+                NSAMPLE: [16, 16]
+            x_conv2:
+                DOWNSAMPLE_FACTOR: 2
+                MLPS: [[32, 32], [32, 32]]
+                POOL_RADIUS: [0.8, 1.2]
+                NSAMPLE: [16, 32]
+            x_conv3:
+                DOWNSAMPLE_FACTOR: 4
+                MLPS: [[64, 64], [64, 64]]
+                POOL_RADIUS: [1.2, 2.4]
+                NSAMPLE: [16, 32]
+            x_conv4:
+                DOWNSAMPLE_FACTOR: 8
+                MLPS: [[64, 64], [64, 64]]
+                POOL_RADIUS: [2.4, 4.8]
+                NSAMPLE: [16, 32]
+
+    POINT_HEAD:
+        NAME: PointHeadSimple
+        CLS_FC: [256, 256]
+        CLASS_AGNOSTIC: True
+        USE_POINT_FEATURES_BEFORE_FUSION: True
+        TARGET_CONFIG:
+            GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
+        LOSS_CONFIG:
+            LOSS_REG: smooth-l1
+            LOSS_WEIGHTS: {
+                'point_cls_weight': 1.0,
+            }
+
     ROI_HEAD:
-        NAME: VoxelRCNNHead
+        NAME: PVRCNNHead
         CLASS_AGNOSTIC: True
 
         SHARED_FC: [256, 256]
@@ -108,35 +191,17 @@ MODEL:
             TEST:
                 NMS_TYPE: nms_gpu
                 MULTI_CLASSES_NMS: False
-                USE_FAST_NMS: False
-                SCORE_THRESH: 0.0
-                NMS_PRE_MAXSIZE: 2048
+                NMS_PRE_MAXSIZE: 1024
                 NMS_POST_MAXSIZE: 100
                 NMS_THRESH: 0.7
 
         ROI_GRID_POOL:
-            FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'x_conv4']
-            PRE_MLP: True
             GRID_SIZE: 6
-            POOL_LAYERS:
-                x_conv2:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [0.4]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
-                x_conv3:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [0.8]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
-                x_conv4:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [1.6]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
+            MLPS: [[64, 64], [64, 64]]
+            POOL_RADIUS: [0.8, 1.6]
+            NSAMPLE: [16, 16]
+            POOL_METHOD: max_pool
+
         TARGET_CONFIG:
             BOX_CODER: ResidualCoder
             ROI_PER_IMAGE: 128
@@ -156,18 +221,16 @@ MODEL:
             CLS_LOSS: BinaryCrossEntropy
             REG_LOSS: smooth-l1
             CORNER_LOSS_REGULARIZATION: True
-            GRID_3D_IOU_LOSS: False
             LOSS_WEIGHTS: {
                 'rcnn_cls_weight': 1.0,
                 'rcnn_reg_weight': 1.0,
                 'rcnn_corner_weight': 1.0,
-                'rcnn_iou3d_weight': 1.0,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-        SCORE_THRESH: 0.3
+        SCORE_THRESH: 0.1
         OUTPUT_RAW_SCORE: False
 
         EVAL_METRIC: kitti
@@ -181,7 +244,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 4
+    BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
