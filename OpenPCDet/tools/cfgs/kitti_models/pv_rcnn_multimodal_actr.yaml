@@ -61,7 +61,7 @@ MODEL:
         ACTR_CFG: {
           fusion_method: 'sum',
           num_bins: 80,
-          num_channels: [64],
+          num_channels: [64, 64, 64],
           query_num_feat: 64,
           num_enc_layers: 4,
           max_num_ne_voxel: 20000,

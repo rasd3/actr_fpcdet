@@ -327,14 +327,14 @@ class VoxelBackBone8xFusion(nn.Module):
             name='SemDeepLabV3',
             backbone='ResNet50',
             num_class=21, # pretrained on COCO
-            args={"feat_extract_layer": ["layer1"],
+            args={"feat_extract_layer": ["layer1", "layer2", "layer3"],
                 "pretrained_path": img_pretrain},
             channel_reduce={
-                "in_channels": [256],
-                "out_channels": [self.img_out_channel],
-                "kernel_size": [1],
-                "stride": [1],
-                "bias": [False]
+                "in_channels": [256, 512, 1024],
+                "out_channels": [self.img_out_channel, self.img_out_channel, self.img_out_channel],
+                "kernel_size": [1, 1, 1],
+                "stride": [1, 1, 1],
+                "bias": [False, False, False]
             }
         )
         cfg_dict = ConfigDict('SemDeepLabV3')
@@ -415,8 +415,9 @@ class VoxelBackBone8xFusion(nn.Module):
             batch_size = batch_dict['batch_size']
             h, w = batch_dict['images'].shape[2:]
 
-            if not x_rgb.shape == batch_dict['images'].shape:
-                x_rgb = nn.functional.interpolate(x_rgb, (h, w), mode='bilinear')
+            if self.fusion_method == 'MVX':
+                if not x_rgb[0].shape == batch_dict['images'].shape:
+                    x_rgb[0]= nn.functional.interpolate(x_rgb[0], (h, w), mode='bilinear')
 
             image_with_voxelfeatures = []
             voxels_2d_int_list = []
@@ -426,7 +427,7 @@ class VoxelBackBone8xFusion(nn.Module):
             pts_feats_list = []
             num_points = []
             for b in range(batch_size):
-                x_rgb_batch = x_rgb[b]
+                x_rgb_batch = x_rgb[0][b]
 
                 calib = calibs[b]
                 voxels_3d_batch = voxels_3d[batch_index==b]
@@ -454,8 +455,6 @@ class VoxelBackBone8xFusion(nn.Module):
                 voxels_2d_int = voxels_2d_int[filter_idx]
                 voxels_2d_int_list.append(voxels_2d_int)
 
-                image_features_batch = torch.zeros((voxel_features_sparse.shape[0], x_rgb_batch.shape[0]), device=x_rgb_batch.device)
-                image_features_batch[filter_idx] = x_rgb_batch[:, voxels_2d_int[:, 1], voxels_2d_int[:, 0]].permute(1, 0)
 
                 if 'ACTR' in self.fusion_method:
                     coor_2d_list.append(voxels_2d_norm)
@@ -463,6 +462,8 @@ class VoxelBackBone8xFusion(nn.Module):
                     pts_feats_list.append(voxel_features_sparse)
 
                 elif self.fusion_method == 'MVX':
+                    image_features_batch = torch.zeros((voxel_features_sparse.shape[0], x_rgb_batch.shape[0]), device=x_rgb_batch.device)
+                    image_features_batch[filter_idx] = x_rgb_batch[:, voxels_2d_int[:, 1], voxels_2d_int[:, 0]].permute(1, 0)
                     if fuse_sum:
                         image_with_voxelfeature = image_features_batch + voxel_features_sparse
                     else:
@@ -492,7 +493,7 @@ class VoxelBackBone8xFusion(nn.Module):
                     pts_feats_b[b, :pts_list[b].shape[0]] = pts_feats_list[b]
                     n_max = max(n_max, pts_list[b].shape[0])
                 enh_feat = self.actr(v_feat=pts_feats_b[:, :n_max], grid=coor_2d_b[:, :n_max],
-                                     i_feats=[x_rgb], lidar_grid=pts_b[:, :n_max, self.inv_idx])
+                                     i_feats=x_rgb, lidar_grid=pts_b[:, :n_max, self.inv_idx])
                 enh_feat_cat = torch.cat(
                     [f[:np] for f, np in zip(enh_feat, num_points)])
                 if fuse_sum:
@@ -505,7 +506,10 @@ class VoxelBackBone8xFusion(nn.Module):
                 image_with_voxelfeatures = torch.cat(image_with_voxelfeatures)
                 return image_with_voxelfeatures
 
-        x_rgb = self.semseg(batch_dict['images'])['layer1_feat2d']
+        img_dict = self.semseg(batch_dict['images'])
+        x_rgb = []
+        for key in img_dict:
+            x_rgb.append(img_dict[key])
         features_multimodal = construct_multimodal_features(x, x_rgb, batch_dict, True)
         x_mm = spconv.SparseConvTensor(features_multimodal, x.indices, x.spatial_shape, x.batch_size)
         return x_mm
