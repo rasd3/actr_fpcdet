@@ -326,6 +326,7 @@ class VoxelBackBone8xFusion(nn.Module):
         model_cfg_seg=dict(
             name='SemDeepLabV3',
             backbone='ResNet50',
+            fusion_method=self.fusion_method,
             num_class=21, # pretrained on COCO
             args={"feat_extract_layer": ["layer1", "layer2", "layer3"],
                 "pretrained_path": img_pretrain},
@@ -337,6 +338,15 @@ class VoxelBackBone8xFusion(nn.Module):
                 "bias": [False, False, False]
             }
         )
+        if self.fusion_method == 'MVX':
+            model_cfg_seg['args']['feat_extract_layer'] = ['layer1']
+            model_cfg_seg['channel_reduce']={
+                "in_channels": [256],
+                "out_channels": [self.img_out_channel],
+                "kernel_size": [1],
+                "stride": [1],
+                "bias": [False]
+            }
         cfg_dict = ConfigDict('SemDeepLabV3')
         objDict.to_object(cfg_dict, **model_cfg_seg)
         self.semseg = PyramidFeat2D(optimize=True, model_cfg=cfg_dict)

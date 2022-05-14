@@ -21,6 +21,7 @@ class PyramidFeat2D(nn.Module):
             backbone_name=model_cfg.backbone,
             **model_cfg.args
         )
+        self.fusion_method = model_cfg.fusion_method
         self.reduce_blocks = torch.nn.ModuleList()
         self.out_channels = {}
         for _idx, _channel in enumerate(model_cfg.channel_reduce["in_channels"]):
@@ -52,7 +53,7 @@ class PyramidFeat2D(nn.Module):
         for _idx, _layer in enumerate(self.model_cfg.args['feat_extract_layer']):
             image_features = ifn_result[_layer]
             # Channel reduce
-            if self.reduce_blocks[_idx] is not None:
+            if self.reduce_blocks[_idx] is not None and self.fusion_method == 'MVX':
                 image_features = self.reduce_blocks[_idx](image_features)
 
             batch_dict[_layer + "_feat2d"] = image_features
