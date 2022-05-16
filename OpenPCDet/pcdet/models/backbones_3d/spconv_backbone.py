@@ -319,6 +319,7 @@ class VoxelBackBone8xFusion(nn.Module):
         img_pretrain = model_cfg.get('IMG_PRETRAIN', "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth")
         self.fusion_pos = model_cfg.get('FUSION_POS', 1)
         self.fusion_method = model_cfg.get('FUSION_METHOD', 'MVX')
+        self.num_feature_levels = model_cfg.get('NUM_FEATURE_LEVELS', 1)
         self.voxel_size = torch.Tensor([0.1, 0.05, 0.05]).cuda()
         self.point_cloud_range = torch.Tensor([-3, -40, 0, 1, 40, 70.4]).cuda()
         self.inv_idx =  torch.Tensor([2, 1, 0]).long().cuda()
@@ -338,6 +339,9 @@ class VoxelBackBone8xFusion(nn.Module):
                 "bias": [False, False, False]
             }
         )
+        model_cfg_seg['args']['feat_extract_layer'] = model_cfg_seg['args']['feat_extract_layer'][:self.num_feature_levels]
+        for key in model_cfg_seg['channel_reduce'].keys():
+            model_cfg_seg['channel_reduce'][key] = model_cfg_seg['channel_reduce'][key][:self.num_feature_levels]
         if self.fusion_method == 'MVX':
             model_cfg_seg['args']['feat_extract_layer'] = ['layer1']
             model_cfg_seg['channel_reduce']={
