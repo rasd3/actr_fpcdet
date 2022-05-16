@@ -55,6 +55,9 @@ class PyramidFeat2D(nn.Module):
             # Channel reduce
             if self.reduce_blocks[_idx] is not None and self.fusion_method == 'MVX':
                 image_features = self.reduce_blocks[_idx](image_features)
+            if 'MVX+' in self.fusion_method and _idx == 0 and self.reduce_blocks[_idx] is not None:
+                red_features = self.reduce_blocks[_idx](image_features)
+                batch_dict['mvx_' + _layer + '_feat2d'] = red_features
 
             batch_dict[_layer + "_feat2d"] = image_features
         

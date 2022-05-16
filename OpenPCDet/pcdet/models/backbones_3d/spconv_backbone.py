@@ -317,13 +317,13 @@ class VoxelBackBone8xFusion(nn.Module):
 
         # add
         img_pretrain = model_cfg.get('IMG_PRETRAIN', "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth")
-        self.fusion_pos = model_cfg.get('FUSION_POS', 1)
+        self.fusion_pos = model_cfg.get('FUSION_POS', [1])
         self.fusion_method = model_cfg.get('FUSION_METHOD', 'MVX')
         self.num_feature_levels = model_cfg.get('NUM_FEATURE_LEVELS', 1)
         self.voxel_size = torch.Tensor([0.1, 0.05, 0.05]).cuda()
         self.point_cloud_range = torch.Tensor([-3, -40, 0, 1, 40, 70.4]).cuda()
         self.inv_idx =  torch.Tensor([2, 1, 0]).long().cuda()
-        self.img_out_channel = 16 if self.fusion_pos == 1 else 64
+        self.img_out_channel = 16 if 1 in self.fusion_pos else 64
         model_cfg_seg=dict(
             name='SemDeepLabV3',
             backbone='ResNet50',
@@ -356,7 +356,7 @@ class VoxelBackBone8xFusion(nn.Module):
         self.semseg = PyramidFeat2D(optimize=True, model_cfg=cfg_dict)
         self.img_channel = 16
         if 'ACTR' in self.fusion_method:
-            model_name = self.fusion_method
+            model_name = self.fusion_method if 'MVX+' not in self.fusion_method else self.fusion_method[4:]
             actr_cfg = model_cfg.get('ACTR_CFG', None)
             lt_cfg = model_cfg.get('LT_CFG', None)
             assert actr_cfg is not None
@@ -409,8 +409,8 @@ class VoxelBackBone8xFusion(nn.Module):
 
 
 
-    def point_fusion(self, x, batch_dict, voxel_stride=1):
-        def construct_multimodal_features(x, x_rgb, batch_dict, fuse_sum=False):
+    def point_fusion(self, x, batch_dict, img_dict, fusion_method, voxel_stride=1):
+        def construct_multimodal_features(x, x_rgb, batch_dict,  fuse_sum=False):
             """
                 Construct the multimodal features with both lidar sparse features and image features.
                 Args:
@@ -429,7 +429,7 @@ class VoxelBackBone8xFusion(nn.Module):
             batch_size = batch_dict['batch_size']
             h, w = batch_dict['images'].shape[2:]
 
-            if self.fusion_method == 'MVX':
+            if fusion_method == 'MVX':
                 if not x_rgb[0].shape == batch_dict['images'].shape:
                     x_rgb[0]= nn.functional.interpolate(x_rgb[0], (h, w), mode='bilinear')
 
@@ -470,12 +470,12 @@ class VoxelBackBone8xFusion(nn.Module):
                 voxels_2d_int_list.append(voxels_2d_int)
 
 
-                if 'ACTR' in self.fusion_method:
+                if 'ACTR' in fusion_method:
                     coor_2d_list.append(voxels_2d_norm)
                     pts_list.append(voxels_3d_batch)
                     pts_feats_list.append(voxel_features_sparse)
 
-                elif self.fusion_method == 'MVX':
+                elif fusion_method == 'MVX':
                     image_features_batch = torch.zeros((voxel_features_sparse.shape[0], x_rgb_batch.shape[0]), device=x_rgb_batch.device)
                     image_features_batch[filter_idx] = x_rgb_batch[:, voxels_2d_int[:, 1], voxels_2d_int[:, 0]].permute(1, 0)
                     if fuse_sum:
@@ -484,7 +484,7 @@ class VoxelBackBone8xFusion(nn.Module):
                         image_with_voxelfeature = torch.cat([image_features_batch, voxel_features_sparse], dim=1)
                     image_with_voxelfeatures.append(image_with_voxelfeature)
 
-            if 'ACTR' in self.fusion_method:
+            if 'ACTR' in fusion_method:
                 n_max = 0
                 pts_feats_b = torch.zeros((batch_size, self.max_num_nev, x.features.shape[1])).cuda()
                 coor_2d_b = torch.zeros((batch_size, self.max_num_nev, 2)).cuda()
@@ -499,7 +499,6 @@ class VoxelBackBone8xFusion(nn.Module):
                                 continue
                             img = cv2.circle(img.copy(), (pts[0], pts[1]), radius=1, color=(0, 0, 255), thickness=-1)
                         cv2.imwrite('test.png', img)
-                        import pdb; pdb.set_trace()
                         abcd = 1
 
                     pts_b[b, :pts_list[b].shape[0]] = pts_list[b]
@@ -516,11 +515,10 @@ class VoxelBackBone8xFusion(nn.Module):
                     enh_feat_cat = torch.cat([enh_feat_cat, x.features], dim=1)
                 return enh_feat_cat
 
-            elif self.fusion_method == 'MVX':
+            elif fusion_method == 'MVX':
                 image_with_voxelfeatures = torch.cat(image_with_voxelfeatures)
                 return image_with_voxelfeatures
 
-        img_dict = self.semseg(batch_dict['images'])
         x_rgb = []
         for key in img_dict:
             x_rgb.append(img_dict[key])
@@ -548,18 +546,26 @@ class VoxelBackBone8xFusion(nn.Module):
             spatial_shape=self.sparse_shape,
             batch_size=batch_size
         )
+        # img
+        img_dict = self.semseg(batch_dict['images'])
 
+        # LiDAR
         x = self.conv_input(input_sp_tensor)
 
         x_conv1 = self.conv1(x)
-        if self.fusion_pos == 1:
-            x_conv1 = self.point_fusion(x_conv1, batch_dict, voxel_stride=1)
+        if 1 in self.fusion_pos:
+            if 'mvx_layer1_feat2d' in img_dict:
+                t_dict = {'layer2_feat2d': img_dict['mvx_layer1_feat2d']}
+                x_conv1 = self.point_fusion(x_conv1, batch_dict, t_dict, 'MVX', voxel_stride=1)
+                img_dict.pop('mvx_layer1_feat2d')
+            else:
+                x_conv1 = self.point_fusion(x_conv1, batch_dict, img_dict, 'MVX', voxel_stride=1)
 
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
-        if self.fusion_pos == 4:
-            x_conv4 = self.point_fusion(x_conv4, batch_dict, voxel_stride=8)
+        if 4 in self.fusion_pos:
+            x_conv4 = self.point_fusion(x_conv4, batch_dict, img_dict, 'ACTR', voxel_stride=8)
 
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
