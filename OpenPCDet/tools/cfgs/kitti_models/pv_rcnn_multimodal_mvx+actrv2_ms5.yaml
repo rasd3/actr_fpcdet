@@ -52,7 +52,7 @@ MODEL:
         USE_IMG: True
         FUSION_POS: [1, 4]
         FUSION_METHOD: MVX+ACTRv2
-        FEATURE_LEVELS: [0]
+        FEATURE_LEVELS: [0, 1, 2]
         LT_CFG: {
           npoint: 2048,
           radius: 2.0,
@@ -62,7 +62,7 @@ MODEL:
         ACTR_CFG: {
           fusion_method: 'sum',
           num_bins: 80,
-          num_channels: [256, 512], #, 1024],
+          num_channels: [256, 512, 1024], #, 1024],
           query_num_feat: 64,
           num_enc_layers: 4,
           max_num_ne_voxel: 20000,

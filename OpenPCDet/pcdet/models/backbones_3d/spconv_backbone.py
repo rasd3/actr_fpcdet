@@ -319,7 +319,7 @@ class VoxelBackBone8xFusion(nn.Module):
         img_pretrain = model_cfg.get('IMG_PRETRAIN', "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth")
         self.fusion_pos = model_cfg.get('FUSION_POS', [1])
         self.fusion_method = model_cfg.get('FUSION_METHOD', 'MVX')
-        self.num_feature_levels = model_cfg.get('NUM_FEATURE_LEVELS', 1)
+        self.feature_levels = model_cfg.get('FEATURE_LEVELS', [0])
         self.voxel_size = torch.Tensor([0.1, 0.05, 0.05]).cuda()
         self.point_cloud_range = torch.Tensor([-3, -40, 0, 1, 40, 70.4]).cuda()
         self.inv_idx =  torch.Tensor([2, 1, 0]).long().cuda()
@@ -339,9 +339,16 @@ class VoxelBackBone8xFusion(nn.Module):
                 "bias": [False, False, False]
             }
         )
-        model_cfg_seg['args']['feat_extract_layer'] = model_cfg_seg['args']['feat_extract_layer'][:self.num_feature_levels]
+        FLAG = False
+        if 'MVX+' in self.fusion_method and 0 not in self.feature_levels:
+            FLAG = True
+            self.feature_levels = [0] + self.feature_levels
+        feat_idx = np.array(self.feature_levels)
+        model_cfg_seg['args']['feat_extract_layer'] = np.array(model_cfg_seg['args']['feat_extract_layer'])[feat_idx].tolist()
         for key in model_cfg_seg['channel_reduce'].keys():
-            model_cfg_seg['channel_reduce'][key] = model_cfg_seg['channel_reduce'][key][:self.num_feature_levels]
+            model_cfg_seg['channel_reduce'][key] = np.array(model_cfg_seg['channel_reduce'][key])[feat_idx].tolist()
+        if FLAG:
+            self.feature_levels = self.feature_levels[1:]
         if self.fusion_method == 'MVX':
             model_cfg_seg['args']['feat_extract_layer'] = ['layer1']
             model_cfg_seg['channel_reduce']={
@@ -565,6 +572,8 @@ class VoxelBackBone8xFusion(nn.Module):
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
         if 4 in self.fusion_pos:
+            if 0 not in self.feature_levels and 'layer1_feat2d' in img_dict:
+                img_dict.pop('layer1_feat2d')
             x_conv4 = self.point_fusion(x_conv4, batch_dict, img_dict, 'ACTR', voxel_stride=8)
 
         # for detection head
