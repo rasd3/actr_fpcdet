@@ -392,10 +392,20 @@ class KittiDataset(DatasetTemplate):
             gt_names = annos['name']
             gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
             gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+            ##chgd
+            gt_classes = np.array([self.class_names.index(n) + 1 if n in self.class_names else -1 for n in gt_names], dtype=np.int32)
+            gt_boxes_no3daug = np.concatenate((gt_boxes_lidar, gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
+            gt_boxes_mask = np.array([n in self.class_names for n in gt_names], dtype=np.bool_)
+            gt_boxes_no3daug = gt_boxes_no3daug[gt_boxes_mask]
+            td_gt_boxes = np.concatenate((annos["bbox"], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
+            td_gt_boxes = td_gt_boxes[gt_boxes_mask]
+            input_dict['gt_boxes2d_no3daug'] = td_gt_boxes
+            ##
 
             input_dict.update({
                 'gt_names': gt_names,
-                'gt_boxes': gt_boxes_lidar
+                'gt_boxes': gt_boxes_lidar,
+                'gt_boxes_no3daug': gt_boxes_no3daug
             })
             if "gt_boxes2d" in get_item_list:
                 input_dict['gt_boxes2d'] = annos["bbox"]

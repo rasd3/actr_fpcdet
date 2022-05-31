@@ -50,7 +50,7 @@ MODEL:
     BACKBONE_3D:
         NAME: VoxelBackBone8xFusion
         USE_IMG: True
-        FUSION_POS: 4
+        FUSION_POS: [4]
         FUSION_METHOD: ACTRv2
         NUM_FEATURE_LEVELS: 2
         LT_CFG: {
