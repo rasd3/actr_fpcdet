@@ -4,6 +4,7 @@ from .basic_blocks import BasicBlock2D
 from .sem_deeplabv3 import SemDeepLabV3
 from . import aux_seg_loss
 
+
 class PyramidFeat2D(nn.Module):
 
     def __init__(self, optimize, model_cfg, seg_loss=False):
@@ -17,29 +18,33 @@ class PyramidFeat2D(nn.Module):
         self.is_optimize = optimize
 
         # Create modules
-        self.ifn = SemDeepLabV3(
-            num_classes=model_cfg.num_class,
-            backbone_name=model_cfg.backbone,
-            **model_cfg.args
-        )
+        self.ifn = SemDeepLabV3(num_classes=model_cfg.num_class,
+                                backbone_name=model_cfg.backbone,
+                                **model_cfg.args)
         self.fusion_method = model_cfg.fusion_method
         self.reduce_blocks = torch.nn.ModuleList()
         self.out_channels = {}
-        for _idx, _channel in enumerate(model_cfg.channel_reduce["in_channels"]):
+        for _idx, _channel in enumerate(
+                model_cfg.channel_reduce["in_channels"]):
             _channel_out = model_cfg.channel_reduce["out_channels"][_idx]
-            self.out_channels[model_cfg.args['feat_extract_layer'][_idx]] = _channel_out
-            block_cfg = {"in_channels": _channel,
-                         "out_channels": _channel_out,
-                         "kernel_size": model_cfg.channel_reduce["kernel_size"][_idx],
-                         "stride": model_cfg.channel_reduce["stride"][_idx],
-                         "bias": model_cfg.channel_reduce["bias"][_idx]}
+            self.out_channels[model_cfg.args['feat_extract_layer']
+                              [_idx]] = _channel_out
+            block_cfg = {
+                "in_channels": _channel,
+                "out_channels": _channel_out,
+                "kernel_size": model_cfg.channel_reduce["kernel_size"][_idx],
+                "stride": model_cfg.channel_reduce["stride"][_idx],
+                "bias": model_cfg.channel_reduce["bias"][_idx]
+            }
             self.reduce_blocks.append(BasicBlock2D(**block_cfg))
 
         # create aux loss
         if seg_loss:
             loss_cfg = model_cfg.seg_loss_config
-            self.aux_seg_loss = aux_seg_loss.SEGLOSS(loss_cfg['weight'], loss_cfg['alpha'], 
-                loss_cfg['gamma'],loss_cfg['fg_weight'], loss_cfg['bg_weight'], loss_cfg['downsample_factor'])
+            self.aux_seg_loss = aux_seg_loss.AuxImgSegmentLoss(
+                loss_cfg['weight'], loss_cfg['alpha'], loss_cfg['gamma'],
+                loss_cfg['fg_weight'], loss_cfg['bg_weight'],
+                loss_cfg['downsample_factor'])
 
     def get_output_feature_dim(self):
         return self.out_channels
@@ -59,19 +64,22 @@ class PyramidFeat2D(nn.Module):
 
         if data_dict is not None:
             data_dict['img_feats'] = []
-        for _idx, _layer in enumerate(self.model_cfg.args['feat_extract_layer']):
+        for _idx, _layer in enumerate(
+                self.model_cfg.args['feat_extract_layer']):
             image_features = ifn_result[_layer]
             # Channel reduce
             if data_dict is not None:
                 data_dict['img_feats'].append(image_features)
-            if self.reduce_blocks[_idx] is not None and self.fusion_method == 'MVX':
+            if self.reduce_blocks[
+                    _idx] is not None and self.fusion_method == 'MVX':
                 image_features = self.reduce_blocks[_idx](image_features)
-            if 'MVX+' in self.fusion_method and _idx == 0 and self.reduce_blocks[_idx] is not None:
+            if 'MVX+' in self.fusion_method and _idx == 0 and self.reduce_blocks[
+                    _idx] is not None:
                 red_features = self.reduce_blocks[_idx](image_features)
                 batch_dict['mvx_' + _layer + '_feat2d'] = red_features
 
             batch_dict[_layer + "_feat2d"] = image_features
-        
+
         if self.training:
             # detach feature from graph if not optimize
             if "logits" in ifn_result:
