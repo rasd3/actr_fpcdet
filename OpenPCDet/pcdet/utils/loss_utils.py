@@ -256,7 +256,7 @@ def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device(
     for b in range(B):
         for n in range(N):
             u1, v1, u2, v2 = gt_boxes2d[b, n]
-            fg_mask[b, v1:v2, u1:u2] = True
+            fg_mask[b, 0, v1:v2, u1:u2] = True
 
     return fg_mask
 

@@ -18,9 +18,7 @@ from .focalloss_segmentation import FocalLoss
 
 
 class AuxImgSegmentLoss(nn.Module):
-
-    def __init__(self, weight, alpha, gamma, fg_weight, bg_weight,
-                 downsample_factor):
+    def __init__(self, weight, alpha, gamma, fg_weight, bg_weight, downsample_factor):
         """
         Initializes DDNLoss module
         Args:
@@ -42,9 +40,7 @@ class AuxImgSegmentLoss(nn.Module):
         self.alpha = alpha
         self.gamma = gamma
         # self.loss_func = FocalLoss()
-        self.loss_func = FocalLoss(alpha=self.alpha,
-                                   gamma=self.gamma,
-                                   reduction="none")
+        self.loss_func = FocalLoss(alpha=self.alpha, gamma=self.gamma, reduction="none")
         self.weight = weight
         use_conv_for_no_stride = None
         upsample_strides = [0.5, 1, 2, 4]
@@ -66,16 +62,16 @@ class AuxImgSegmentLoss(nn.Module):
                     in_channels,
                     out_channel,
                     kernel_size=upsample_strides[i],
-                    stride=upsample_strides[i])
+                    stride=upsample_strides[i],
+                )
 
             else:
                 stride = np.round(1 / stride).astype(np.int64)
-                upsample_layer = torch.nn.Upsample(
-                    scale_factor=upsample_strides[i])
+                upsample_layer = torch.nn.Upsample(scale_factor=upsample_strides[i])
                 # upsample_layer = torch.nn.Upsample(input = img_aux_feats, scale_factor=upsample_strides[i])
-            deblock = nn.Sequential(upsample_layer,
-                                    torch.nn.BatchNorm2d(out_channel),
-                                    nn.ReLU(inplace=True))
+            deblock = nn.Sequential(
+                upsample_layer, torch.nn.BatchNorm2d(out_channel), nn.ReLU(inplace=True)
+            )
             deblocks.append(deblock)
         self.aux_img_cls_agg = nn.ModuleList(deblocks)
         self.aux_img_cls = nn.Conv2d(out_channel, self.num_classes, 1)
@@ -83,12 +79,13 @@ class AuxImgSegmentLoss(nn.Module):
     def pred_fg_img(self, batch_dict):
 
         cat_list = []
-        aux_img_losses_cls = torch.tensor(0.).cuda()
-        batch_size = batch_dict['batch_size']
-        img_aux_feats = batch_dict['img_dict']
+        aux_img_losses_cls = torch.tensor(0.0).cuda()
+        batch_size = batch_dict["batch_size"]
+        img_aux_feats = batch_dict["img_dict"]
 
         for i in range(len(img_aux_feats)):
-            if i == 0: img_aux_feats[0] = img_aux_feats['layer1_feat2d']
+            if i == 0:
+                img_aux_feats[0] = img_aux_feats["layer1_feat2d"]
             cat_list.append(self.aux_img_cls_agg[i](img_aux_feats[i]))
         # cat_list.append(self.aux_img_cls_agg(img_aux_feats))
 
@@ -108,7 +105,7 @@ class AuxImgSegmentLoss(nn.Module):
         #     aux_img_loss_cls = self.aux_img_loss_cls(
         #         pred_cls_img[b], gt_cls_img[b].to(torch.long))
         #     aux_img_losses_cls += aux_img_loss_cls
-        batch_dict['pred_aux_img_seg'] = pred_fg_img
+        batch_dict["pred_aux_img_seg"] = pred_fg_img
         return pred_fg_img, target_size
 
     def forward(self, batch_dict, tb_dict):
@@ -122,18 +119,14 @@ class AuxImgSegmentLoss(nn.Module):
             loss: (1), Depth distribution network loss
             tb_dict: dict[float], All losses to log in tensorboard
         """
-        tb_dict = {}
-        gt_boxes2d = batch_dict['gt_boxes2d']
-        images = batch_dict['images']
-        images_rei = torch.zeros(images.shape[0],
-                                 1,
-                                 images.shape[2],
-                                 images.shape[3],
-                                 device='cuda')
+        gt_boxes2d = batch_dict["gt_boxes2d"]
+        images = batch_dict["images"]
+        images_rei = torch.zeros(
+            images.shape[0], 1, images.shape[2], images.shape[3], device="cuda"
+        )
 
         fg_pred, target_size = self.pred_fg_img(batch_dict)
-        target_size = torch.zeros(target_size[0], target_size[2],
-                                  target_size[3])
+        target_size = torch.zeros(target_size[0], target_size[2], target_size[3])
         # Compute loss
         # loss = self.loss_func(depth_logits, depth_target)
 
@@ -141,9 +134,11 @@ class AuxImgSegmentLoss(nn.Module):
             gt_boxes2d=gt_boxes2d,
             shape=images_rei.shape,
             downsample_factor=self.downsample_factor,
-            device=images_rei.device)
+            device=images_rei.device,
+        )
         fg_mask = nn.functional.interpolate(
-            fg_mask.to(torch.float), size=target_size.shape[1:]).squeeze(dim=1)
+            fg_mask.to(torch.float), size=target_size.shape[1:]
+        ).squeeze(dim=1)
         # fg_mask = fg_mask.permute(0, 2, 3, 1).reshape(batch_dict['batch_size'], -1, self.num_classes).squeeze(2).unsqueeze(1).to(torch.int64)
 
         # Compute loss
@@ -169,96 +164,104 @@ class AuxImgSegmentLoss(nn.Module):
 
         # Get total loss
         loss = fg_loss + bg_loss
-        tb_dict = {
-            "balancer_loss": loss.item(),
-            "fg_loss": fg_loss.item(),
-            "bg_loss": bg_loss.item()
-        }
+        tb_dict.update(
+            {
+                "balancer_loss": loss.item(),
+                "fg_loss": fg_loss.item(),
+                "bg_loss": bg_loss.item(),
+            }
+        )
 
         # Final loss
         loss *= self.weight
-        tb_dict.update({"aux_seg_loss": loss.item()})
 
         return loss, tb_dict
 
 
 class AuxConsistencyLoss(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.aux_cons_loss_func = F.binary_cross_entropy
 
     def make_projected_img(self, batch_dict, aux_pts_dict):
-        calibs = batch_dict['calib']
-        batch_size = batch_dict['batch_size']
+        calibs = batch_dict["calib"]
+        batch_size = batch_dict["batch_size"]
         inv_idx = torch.Tensor([0, 1, 2]).long().cuda()
-        h, w = batch_dict['images'].shape[2:]
-        nh, nw = batch_dict['pred_aux_img_seg'].shape[2:]
-        ratio = round(h / batch_dict['pred_aux_img_seg'].shape[2])
+        h, w = batch_dict["images"].shape[2:]
+        nh, nw = batch_dict["pred_aux_img_seg"].shape[2:]
+        ratio = round(h / batch_dict["pred_aux_img_seg"].shape[2])
         proj_img = torch.zeros([batch_size, nh, nw]).cuda()
 
         for b in range(batch_size):
             calib = calibs[b]
-            mask = aux_pts_dict['point_coords'][:, 0] == b
-            voxels_3d_batch = aux_pts_dict['point_coords'][mask][:, 1:]
+            mask = aux_pts_dict["point_coords"][:, 0] == b
+            voxels_3d_batch = aux_pts_dict["point_coords"][mask][:, 1:]
 
             # Reverse the point cloud transformations to the original coords.
-            if 'noise_scale' in batch_dict:
-                voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
-            if 'noise_rot' in batch_dict:
+            if "noise_scale" in batch_dict:
+                voxels_3d_batch[:, :3] /= batch_dict["noise_scale"][b]
+            if "noise_rot" in batch_dict:
                 voxels_3d_batch = common_utils.rotate_points_along_z(
                     voxels_3d_batch[:, inv_idx].unsqueeze(0),
-                    -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, inv_idx]
-            if 'flip_x' in batch_dict:
-                voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
-            if 'flip_y' in batch_dict:
-                voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+                    -batch_dict["noise_rot"][b].unsqueeze(0),
+                )[0, :, inv_idx]
+            if "flip_x" in batch_dict:
+                voxels_3d_batch[:, 1] *= -1 if batch_dict["flip_x"][b] else 1
+            if "flip_y" in batch_dict:
+                voxels_3d_batch[:, 2] *= -1 if batch_dict["flip_y"][b] else 1
 
-            voxels_2d, _ = calib.lidar_to_img(
-                voxels_3d_batch[:, inv_idx].cpu().numpy())
+            voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, inv_idx].cpu().numpy())
             voxels_2d_norm = voxels_2d / np.array([w, h])
 
             voxels_2d_int = torch.Tensor(voxels_2d).cuda().long()
 
-            filter_idx = (0 <= voxels_2d_norm[:, 1]) * (
-                voxels_2d_norm[:, 1] <
-                1) * (0 <= voxels_2d_norm[:, 0]) * (voxels_2d_norm[:, 0] < 1)
+            filter_idx = (
+                (0 <= voxels_2d_norm[:, 1])
+                * (voxels_2d_norm[:, 1] < 1)
+                * (0 <= voxels_2d_norm[:, 0])
+                * (voxels_2d_norm[:, 0] < 1)
+            )
 
-            pts_cls_pred = aux_pts_dict['point_cls_preds'][filter_idx]
+            pts_cls_pred = aux_pts_dict["point_cls_preds"][mask][filter_idx]
             if False:
                 pts_cls_pred = pts_cls_pred.cpu().detach().numpy()
-                pts_cls_pred = ((pts_cls_pred - pts_cls_pred.min()) /
-                                (pts_cls_pred.max() - pts_cls_pred.min()) *
-                                255.).astype(np.uint8)
-            voxels_proj = (voxels_2d_norm[filter_idx] *
-                           np.array([nw, nh])).astype(np.int)
-            proj_img[b, voxels_proj[:, 1],
-                     voxels_proj[:, 0]] = pts_cls_pred.squeeze().sigmoid()
+                pts_cls_pred = (
+                    (pts_cls_pred - pts_cls_pred.min())
+                    / (pts_cls_pred.max() - pts_cls_pred.min())
+                    * 255.0
+                ).astype(np.uint8)
+            voxels_proj = (voxels_2d_norm[filter_idx] * np.array([nw, nh])).astype(
+                np.int
+            )
+            proj_img[
+                b, voxels_proj[:, 1], voxels_proj[:, 0]
+            ] = pts_cls_pred.squeeze().sigmoid()
             #  cv2.imwrite('test.png', proj_img[b])
 
         return proj_img
 
     def forward(self, batch_dict, aux_pts_dict, tb_dict=None):
-        batch_size = len(batch_dict['frame_id'])
+        batch_size = len(batch_dict["frame_id"])
         conf_thres = 0.2
 
         aux_pts_imgs = self.make_projected_img(batch_dict, aux_pts_dict)
-        aux_img_imgs = batch_dict['pred_aux_img_seg'][:, 0].sigmoid()
+        aux_img_imgs = batch_dict["pred_aux_img_seg"][:, 0].sigmoid()
 
         pts_idx = aux_pts_imgs.nonzero()
         pts_nz_list = aux_pts_imgs[pts_idx[:, 0], pts_idx[:, 1], pts_idx[:, 2]]
         img_nz_list = aux_img_imgs[pts_idx[:, 0], pts_idx[:, 1], pts_idx[:, 2]]
-        mask = torch.logical_or((pts_nz_list > conf_thres),
-                                (img_nz_list > conf_thres))
+        mask = torch.logical_or((pts_nz_list > conf_thres), (img_nz_list > conf_thres))
         pts_nz_list = pts_nz_list[mask]
         img_nz_list = img_nz_list[mask]
         reg_weights = torch.ones_like(pts_nz_list, dtype=torch.float)
         reg_weights /= pts_nz_list.shape[0]
 
         consistency_loss_src_1 = self.aux_cons_loss_func(
-            pts_nz_list, img_nz_list.detach(), reduction='none')
+            pts_nz_list, img_nz_list.detach(), reduction="none"
+        )
         consistency_loss_src_2 = self.aux_cons_loss_func(
-            img_nz_list, pts_nz_list.detach(), reduction='none')
+            img_nz_list, pts_nz_list.detach(), reduction="none"
+        )
         consistency_loss = (consistency_loss_src_1 + consistency_loss_src_2) / 2
         consistency_loss = (consistency_loss * reg_weights).sum() / batch_size
 

@@ -149,7 +149,6 @@ class AuxPointHeadSimple(PointHeadTemplate):
         point_loss_cls, tb_dict_1 = self.get_cls_layer_loss()
 
         point_loss = point_loss_cls
-        tb_dict.update(tb_dict_1)
         return point_loss, tb_dict
 
     def div_batch_dict(self, sconv):
