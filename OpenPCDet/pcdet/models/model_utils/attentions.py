@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 from pcdet.utils import common_utils
 
-
 class devil(nn.Module):
     def __init__(self):
         super(devil, self).__init__()
@@ -88,12 +87,12 @@ class devil(nn.Module):
 
 
 class BasicGate(nn.Module):
-    def __init__(self, g_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
         super(BasicGate, self).__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
         self.inv_idx = inv_idx
-        self.g_channel_list = g_channel_list
+        self.g_channel_list = pts_channel_list
         self.sparse_shape = sparse_shape
         self.spatial_basic_list = []
         for scale in range(len(self.g_channel_list)):
@@ -117,6 +116,7 @@ class BasicGate(nn.Module):
 
 
         self.sigmoid = nn.Sigmoid()
+
     def forward(self, x_rgb, x_list, batch_dict):
         batch_size = batch_dict['batch_size']
         calibs = batch_dict['calib']
@@ -163,6 +163,489 @@ class BasicGate(nn.Module):
             pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
             attention_map = torch.sigmoid(pts)
             new_img_feats.append(x_rgb[idx] * attention_map)
+
+        return new_img_feats
+
+class BasicGatev2(nn.Module):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(BasicGatev2, self).__init__()
+        self.voxel_size = voxel_size
+        self.point_cloud_range = point_cloud_range
+        self.inv_idx = inv_idx
+        self.img_channel_list = img_channel_list
+        self.pts_channel_list = pts_channel_list
+        self.sparse_shape = sparse_shape
+        self.spatial_basic_list = []
+        self.channel_reduce_list = []
+        for scale in range(len(self.pts_channel_list)):
+            self.spatial_basic = []
+            for idx in range(num_conv - 1):
+                self.spatial_basic.append(
+                    nn.Conv2d(self.pts_channel_list[scale],
+                            self.pts_channel_list[scale],
+                            kernel_size=3,
+                            stride=1,
+                            padding=1))
+                self.spatial_basic.append(
+                    nn.BatchNorm2d(self.pts_channel_list[scale], eps=1e-3, momentum=0.01)
+                )
+                self.spatial_basic.append(
+                    nn.ReLU()
+                )
+            self.spatial_basic.append(
+                nn.Conv2d(self.pts_channel_list[scale], 1, kernel_size=3, stride=1, padding=1))
+            self.spatial_basic_list.append(nn.Sequential(*self.spatial_basic))
+            self.channel_reduce_list.append(nn.Conv2d(self.pts_channel_list[scale], self.img_channel_list[scale], kernel_size=1, stride=1))
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[s].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            new_img_feats.append(x_rgb[idx] + self.channel_reduce_list[idx].to(device=device)(attention_map * pts_img_list[idx]))
+
+        return new_img_feats
+
+class BasicGatev3(BasicGatev2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(BasicGatev3, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[s].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            new_img_feats.append(attention_map * x_rgb[idx] + self.channel_reduce_list[idx].to(device=device)(attention_map * pts_img_list[idx]))
+
+        return new_img_feats
+
+class Patch(BasicGatev2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(Patch, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
+        self.spatial_basic_list = []
+        self.channel_reduce_list = []
+        for scale in range(len(self.pts_channel_list)):
+            self.pts_channel_list[scale] = self.pts_channel_list[scale] + 3
+            self.spatial_basic = []
+            for idx in range(num_conv - 1):
+                self.spatial_basic.append(
+                    nn.Conv2d(self.pts_channel_list[scale],
+                            self.pts_channel_list[scale],
+                            kernel_size=3,
+                            stride=1,
+                            padding=1))
+                self.spatial_basic.append(
+                    nn.BatchNorm2d(self.pts_channel_list[scale], eps=1e-3, momentum=0.01)
+                )
+                self.spatial_basic.append(
+                    nn.ReLU()
+                )
+            self.spatial_basic.append(
+                nn.Conv2d(self.pts_channel_list[scale], 1, kernel_size=3, stride=1, padding=1))
+            self.spatial_basic_list.append(nn.Sequential(*self.spatial_basic))
+            self.channel_reduce_list.append(nn.Conv2d(self.pts_channel_list[scale], self.img_channel_list[scale], kernel_size=1, stride=1))
+
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                ##chgd
+                voxel_features_sparse = torch.cat([x_list[s].features[batch_index==b],voxels_3d_batch],dim=-1)
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            new_img_feats.append(x_rgb[idx] + self.channel_reduce_list[idx].to(device=device)(attention_map * pts_img_list[idx]))
+
+        return new_img_feats
+
+class Patchv2(BasicGatev2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(Patchv2, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+                    
+                ##chgd
+                voxel_features_sparse = torch.cat([x_list[s].features[batch_index==b],voxels_3d_batch],dim=-1)
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            new_img_feats.append(x_rgb[idx] + self.channel_reduce_list[idx].to(device=device)(attention_map * pts_img_list[idx]))
+
+        return new_img_feats
+
+class BasicGatev4(nn.Module):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(BasicGatev4, self).__init__()
+        self.voxel_size = voxel_size
+        self.point_cloud_range = point_cloud_range
+        self.inv_idx = inv_idx
+        self.img_channel_list = img_channel_list
+        self.pts_channel_list = pts_channel_list
+        self.sparse_shape = sparse_shape
+        self.spatial_basic_list = []
+        self.channel_reduce_list = []
+        for scale in range(len(self.pts_channel_list)):
+            self.spatial_basic = []
+            for idx in range(num_conv - 1):
+                self.spatial_basic.append(
+                    nn.Conv2d(self.pts_channel_list[scale],
+                            self.pts_channel_list[scale],
+                            kernel_size=3,
+                            stride=1,
+                            padding=1))
+                self.spatial_basic.append(
+                    nn.BatchNorm2d(self.pts_channel_list[scale], eps=1e-3, momentum=0.01)
+                )
+                self.spatial_basic.append(
+                    nn.ReLU()
+                )
+            self.spatial_basic.append(
+                nn.Conv2d(self.pts_channel_list[scale], 1, kernel_size=3, stride=1, padding=1))
+            self.spatial_basic_list.append(nn.Sequential(*self.spatial_basic))
+            self.channel_reduce_list.append(nn.Conv2d(self.pts_channel_list[scale]+self.img_channel_list[scale], self.img_channel_list[scale], kernel_size=1, stride=1))
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[s].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            cat_feat = torch.cat([x_rgb[idx],attention_map*pts_img_list[idx]],dim=1)
+            new_img_feats.append(self.channel_reduce_list[idx].to(device=device)(cat_feat))
+
+        return new_img_feats
+
+class BasicGatev5(BasicGatev4):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(BasicGatev5, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[s].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            cat_feat = torch.cat([attention_map * x_rgb[idx],attention_map * pts_img_list[idx]],dim=1)
+            new_img_feats.append(self.channel_reduce_list[idx].to(device=device)(cat_feat))
+
+        return new_img_feats
+
+class BasicGatev6(nn.Module):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+        super(BasicGatev6, self).__init__()
+        self.voxel_size = voxel_size
+        self.point_cloud_range = point_cloud_range
+        self.inv_idx = inv_idx
+        self.img_channel_list = img_channel_list
+        self.pts_channel_list = pts_channel_list
+        self.sparse_shape = sparse_shape
+        self.spatial_basic_list = []
+        self.channel_reduce_list = []
+        for scale in range(len(self.pts_channel_list)):
+            self.spatial_basic = []
+            for idx in range(num_conv - 1):
+                self.spatial_basic.append(
+                    nn.Conv2d(self.pts_channel_list[scale],
+                            self.pts_channel_list[scale],
+                            kernel_size=3,
+                            stride=1,
+                            padding=1))
+                self.spatial_basic.append(
+                    nn.BatchNorm2d(self.pts_channel_list[scale], eps=1e-3, momentum=0.01)
+                )
+                self.spatial_basic.append(
+                    nn.ReLU()
+                )
+            self.spatial_basic.append(
+                nn.Conv2d(self.pts_channel_list[scale], 1, kernel_size=3, stride=1, padding=1))
+            self.spatial_basic_list.append(nn.Sequential(*self.spatial_basic))
+            self.channel_reduce_list.append(nn.Conv2d(self.pts_channel_list[scale], self.img_channel_list[scale], kernel_size=1, stride=1))
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        scale_size = len(x_rgb)
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for s in range(scale_size):
+            batch_img_list = []
+            batch_index = x_list[s].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[s].spatial_shape[1]
+            spatial_indices = x_list[s].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[s].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[s], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        new_img_feats = []
+        
+        for idx in range(len(pts_img_list)):
+            pts = self.spatial_basic_list[idx].to(device=device)(pts_img_list[idx])
+            attention_map = torch.sigmoid(pts)
+            new_img_feats.append(x_rgb[idx] + self.channel_reduce_list[idx].to(device=device)(attention_map * pts_img_list[idx]))
 
         return new_img_feats
 
@@ -214,3 +697,16 @@ def pts2img(coor, pts_feat, shape, pts, ret_depth=False):
     return i_pts_feat, None
 
 
+
+__all__ = {
+    'devil': devil,
+    'BasicGate': BasicGate,
+    'BasicGatev2': BasicGatev2,
+    'BasicGatev3': BasicGatev3,
+    'BasicGatev4': BasicGatev4,
+    'BasicGatev5': BasicGatev5,
+    'BasicGatev6': BasicGatev6,
+    'BiGate': BiGate,
+    'Patch': Patch,
+    'Patchv2': Patchv2
+}
