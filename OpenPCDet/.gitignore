@@ -12,6 +12,9 @@ venv/
 *.pkl
 *.zip
 *.bin
+output_*
+.vscode
+checkpoints
 output
 pcdet/version.py
 alarm.py
