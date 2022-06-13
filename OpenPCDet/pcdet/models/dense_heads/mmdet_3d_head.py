@@ -35,7 +35,7 @@ class MMDet3DHead(nn.Module):
         img_metas = [{
             "image": data_dict['images'][i],  # for debug
             "filename": "data/kitti/training/image_2/" + data_dict['frame_id'][i] + ".png",
-            "img_shape": list(map(int,data_dict['image_shape'][0].cpu())),
+            "img_shape": list(map(int,data_dict['image_shape'][0].cpu()))+[3],
             "ori_shape": list(data_dict['images'][i].shape[1:3]) + [3],
             "pad_shape": list(map(int,data_dict['pad_shape'][0].cpu())) if 'pad_shape' in data_dict else None,
             'img_norm_cfg': data_dict['img_norm_cfg'][i] if 'img_norm_cfg' in data_dict else None,
@@ -47,14 +47,14 @@ class MMDet3DHead(nn.Module):
             }
             for i in range(len(data_dict['images']))]
         
-        gt_boxes_2d = data_dict['gt_boxes2d_no3daug'][:,:,:-1]
-        gt_labels_2d = data_dict['gt_boxes2d_no3daug'][:,:,-1]
+        gt_boxes_2d = data_dict['gt_boxes2d_gtsp_no3daug'][:,:,:-1]
+        gt_labels_2d = data_dict['gt_boxes2d_gtsp_no3daug'][:,:,-1]
         data_dict['mmdet_2d_gt_labels'] = torch.unbind(gt_labels_2d.long() - 1)
         #data_dict['mmdet_2d_gt_labels'] = self.pcdet2mmdet_label(gt_labels_2d)
-        data_dict['gt_boxes2d_no3daug'] = torch.unbind(gt_boxes_2d)
+        data_dict['gt_boxes2d_gtsp_no3daug'] = torch.unbind(gt_boxes_2d)
 
-        gt_boxes = data_dict['gt_boxes_no3daug'][:,:,:-1]
-        gt_labels = data_dict['gt_boxes_no3daug'][:,:,-1]
+        gt_boxes = data_dict['gt_boxes_gtsp_no3daug'][:,:,:-1]
+        gt_labels = data_dict['gt_boxes_gtsp_no3daug'][:,:,-1]
         device = gt_boxes.device
         data_dict['mmdet_gt_labels'] = torch.unbind(gt_labels.long() - 1)
         #data_dict['mmdet_gt_labels'] = self.pcdet2mmdet_label(gt_labels)
@@ -63,7 +63,7 @@ class MMDet3DHead(nn.Module):
         gt_boxes_cam_list = []
         depth_list = []
 
-        for batch_idx in range(len(data_dict['gt_boxes_no3daug'])):
+        for batch_idx in range(len(data_dict['gt_boxes_gtsp_no3daug'])):
             gt_boxes_cam = box_utils.boxes3d_lidar_to_kitti_camera(gt_boxes[batch_idx].cpu(), data_dict['calib'][batch_idx])
             gt_boxes_cam = torch.tensor(gt_boxes_cam)
             center3d = gt_boxes_cam[:,:3]
@@ -82,17 +82,17 @@ class MMDet3DHead(nn.Module):
         data_dict['centers2d'] = center2d_list
         data_dict['gt_boxes_cam'] = gt_boxes_cam_list
         
-        # # centers 2d 위치 확인, batch 1에서만 가능
+        ## centers 2d 위치 확인, batch 1에서만 가능
         # import cv2
         # img22 = data_dict['images'][0].cpu().permute((1,2,0)).numpy()
         # img2 = img22.copy()
-        # for i in range(len(center2d)):
-        #     cv2.circle(img2,(int(center2d[i,:2][0]),int(center2d[i,:2][1])),5,(255,255,255),-1)
+        # for i in range(len(center2d_list[0])):
+        #     cv2.circle(img2,(int(center2d_list[0][i,:2][0]),int(center2d_list[0][i,:2][1])),5,(255,255,255),-1)
         # cv2.imwrite("1.jpg",img2)
 
         # # 3d box bottom center 확인, batch 1에서만 가능
         # import cv2
-        # centre3d = gt_boxes_cam.tensor.cpu()[:,:3]
+        # centre3d = gt_boxes_cam_list[0].tensor.cpu()[:,:3]
         # centre2d = self.points_cam2img(centre3d, cam2img, with_depth=True)
         # img22 = data_dict['images'][0].cpu().permute((1,2,0)).numpy()
         # img2 = img22.copy()
@@ -104,18 +104,13 @@ class MMDet3DHead(nn.Module):
         # import cv2
         # img22 = data_dict['images'][0].cpu().permute((1,2,0)).numpy()
         # img2 = img22.copy()
-        # box2d = data_dict['gt_boxes2d_no3daug']
+        # box2d = data_dict['gt_boxes2d']
         # for i in range(len(box2d[0])):
         #     cv2.rectangle(img2,(int(box2d[0][i,0]),int(box2d[0][i,1])),(int(box2d[0][i,2]),int(box2d[0][i,3])),(255,255,255),2)
         # cv2.imwrite("3.jpg",img2)
 
-
-
-        if len(data_dict['gt_boxes2d_no3daug'][0]) != len(data_dict['gt_boxes_cam'][0]):
-            import pdb;pdb.set_trace()
-
         losses = self.bbox_head.forward_train(data_dict['img_feats'], \
-        img_metas, data_dict['gt_boxes2d_no3daug'], data_dict['mmdet_2d_gt_labels'],\
+        img_metas, data_dict['gt_boxes2d_gtsp_no3daug'], data_dict['mmdet_2d_gt_labels'],\
              data_dict['gt_boxes_cam'], data_dict['mmdet_gt_labels'],\
                   data_dict['centers2d'], data_dict['depths'])
         

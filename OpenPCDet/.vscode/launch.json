@@ -1,0 +1,55 @@
+{
+    // IntelliSense를 사용하여 가능한 특성에 대해 알아보세요.
+    // 기존 특성에 대한 설명을 보려면 가리킵니다.
+    // 자세한 내용을 보려면 https://go.microsoft.com/fwlink/?linkid=830387을(를) 방문하세요.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "tools/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env":{"CUDA_VISIBLE_DEVICES":"3"},
+            "args": ["--cfg_file","tools/cfgs/kitti_models/pv_rcnn_mm_mvx+actrv2_attn+pgd.yaml"]
+        }
+    ]
+}
+// {
+//     // IntelliSense를 사용하여 가능한 특성에 대해 알아보세요.
+//     // 기존 특성에 대한 설명을 보려면 가리킵니다.
+//     // 자세한 내용을 보려면 https://go.microsoft.com/fwlink/?linkid=830387을(를) 방문하세요.
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python: Current File",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "pth_modifier.py",
+//             "console": "integratedTerminal",
+//             "justMyCode": true,
+//             "args": ["union","second_7862_union_pgd.pth","img_backbone.pth"]
+//         }
+//     ]
+// }
+    
+// {
+// // Use IntelliSense to learn about possible attributes.
+// // Hover to view descriptions of existing attributes.
+// // For more information, visit: [https://go.microsoft.com/fwlink/?linkid=830387](https://go.microsoft.com/fwlink/?linkid=830387)
+// "version": "0.2.0",
+// "configurations": [
+// {
+// "name": "Python: Current File",
+// "type": "python",
+// "request": "launch",
+// // "program": "tools/train.py",
+// "console": "integratedTerminal",
+// "module":"torch.distributed.launch",
+// "env":{"CUDA_VISIBLE_DEVICES":"0,1"},
+// "args":["--nproc_per_node=2","tools/train.py","--launcher","pytorch","--cfg_file","tools/cfgs/kitti_models/MVXNet_PGD.yaml"]
+// //"justMyCode": false
+// }
+// ]
+// }

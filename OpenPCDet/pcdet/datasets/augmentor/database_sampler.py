@@ -418,4 +418,20 @@ class DataBaseSampler(object):
                                                         total_valid_sampled_dict)
 
         data_dict.pop('gt_boxes_mask')
+
+        if len(data_dict['gt_boxes']) != len(data_dict['gt_boxes2d']):
+            import pdb;pdb.set_trace()
+        
+        gt_names = data_dict["gt_names"]
+        gt_classes = np.array([self.class_names.index(n) + 1 if n in self.class_names else -1 for n in gt_names], dtype=np.int32)
+        gt_boxes_mask = np.array([n in self.class_names for n in gt_names], dtype=np.bool_)
+        
+        data_dict['gt_boxes2d_gtsp_no3daug'] = data_dict['gt_boxes2d']
+        data_dict['gt_boxes2d_gtsp_no3daug'] = np.concatenate((data_dict['gt_boxes2d_gtsp_no3daug'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
+        data_dict['gt_boxes2d_gtsp_no3daug'] = data_dict['gt_boxes2d_gtsp_no3daug'][gt_boxes_mask]
+
+
+        data_dict['gt_boxes_gtsp_no3daug'] = data_dict['gt_boxes']
+        data_dict['gt_boxes_gtsp_no3daug'] = np.concatenate((data_dict['gt_boxes_gtsp_no3daug'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
+        data_dict['gt_boxes_gtsp_no3daug'] = data_dict['gt_boxes_gtsp_no3daug'][gt_boxes_mask]
         return data_dict

@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    _BASE_CONFIG_: /mnt/sdb/kypark/actr_fpcdet_0607/actr_fpcdet/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset.yaml
     GET_ITEM_LIST: ["images", "points", "calib_matricies", "gt_boxes2d"]
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
@@ -68,9 +68,11 @@ MODEL:
           max_num_ne_voxel: 20000,
           pos_encode_method: 'depth'
         }
-        I_FUSION_METHOD: BasicGate
+        I_FUSION_METHOD: BasicGate_Patch
         IACTR_CFG: {
-            num_channels: [32,64,64]
+            img_num_channels: [256, 512, 1024],
+            pts_num_channels: [32, 64, 64],
+
         }
         IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
 
