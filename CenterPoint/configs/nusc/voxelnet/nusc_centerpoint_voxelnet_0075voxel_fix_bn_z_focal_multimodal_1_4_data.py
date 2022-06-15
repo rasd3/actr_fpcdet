@@ -131,13 +131,13 @@ test_cfg = dict(
 dataset_type = "NuScenesDataset"
 version= "v1.0-trainval"
 nsweeps = 10
-data_root = "data/nuScenes"
+data_root = "data/nuscenes"
 with_info = True
 
 db_sampler = dict(
     type="GT-AUG",
     enable=True,
-    db_info_path="data/nuScenes/dbinfos_train_10sweeps_withvelo.pkl",
+    db_info_path="data/nuscenes/dbinfos_train_10sweeps_withvelo.pkl",
     sample_groups=[
         dict(car=2),
         dict(truck=3),
@@ -212,12 +212,12 @@ test_pipeline = [
     dict(type="Reformat"),
 ]
 
-train_anno = "data/nuScenes/infos_train_mini_1_4_10sweeps_withvelo_filter_True.pkl"
-val_anno = "data/nuScenes/infos_val_10sweeps_withvelo_filter_True.pkl"
+train_anno = "data/nuscenes/infos_train_mini_1_4_10sweeps_withvelo_filter_True.pkl"
+val_anno = "data/nuscenes/infos_val_10sweeps_withvelo_filter_True.pkl"
 test_anno = None
 
 data = dict(
-    samples_per_gpu=4,
+    samples_per_gpu=1,
     workers_per_gpu=3,
     train=dict(
         type=dataset_type,

@@ -189,3 +189,44 @@ class SpMiddleResNetFHD(nn.Module):
         }
 
         return ret, multi_scale_voxel_features
+
+@BACKBONES.register_module
+class SpMiddleResNetFHDFusion(SpMiddleResNetFHD):
+    def __init__(
+        self, num_input_features=128, norm_cfg=None, name="SpMiddleResNetFHDFusion", **kwargs
+    ):
+        super(SpMiddleResNetFHDFusion, self).__init__(num_input_features, norm_cfg, name, **kwargs)
+
+    def forward(self, voxel_features, batch_dict, coors, batch_size, input_shape, fuse_func=None):
+        # input: # [41, 1600, 1408]
+        sparse_shape = np.array(input_shape[::-1]) + [1, 0, 0]
+
+        coors = coors.int()
+        ret = spconv.SparseConvTensor(voxel_features, coors, sparse_shape, batch_size)
+
+        x = self.conv_input(ret)
+
+        x_conv1 = self.conv1(x)
+
+        # fusion
+        x_conv1 = fuse_func(batch_dict, encoded_voxel=x_conv1, layer_name ='layer1')
+
+        x_conv2 = self.conv2(x_conv1)
+        x_conv3 = self.conv3(x_conv2)
+        x_conv4 = self.conv4(x_conv3)
+
+        ret = self.extra_conv(x_conv4)
+
+        ret = ret.dense()
+
+        N, C, D, H, W = ret.shape
+        ret = ret.view(N, C * D, H, W)
+
+        multi_scale_voxel_features = {
+            'conv1': x_conv1,
+            'conv2': x_conv2,
+            'conv3': x_conv3,
+            'conv4': x_conv4,
+        }
+
+        return ret, multi_scale_voxel_features

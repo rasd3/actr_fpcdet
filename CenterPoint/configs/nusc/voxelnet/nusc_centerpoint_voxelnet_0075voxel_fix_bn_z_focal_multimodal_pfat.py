@@ -68,7 +68,7 @@ model = dict(
     ),
     fusion=dict(
         type='VoxelWithPointProjection',
-        fuse_mode='sum',
+        fuse_mode='pfat',
         interpolate=True,
         voxel_size=voxel_generator['voxel_size'],
         pc_range=voxel_generator['range'],
