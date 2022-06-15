@@ -51,7 +51,7 @@ MODEL:
         NAME: VoxelBackBone8xFusion
         USE_IMG: True
         AUX_PTS_LOSS: True
-        AUX_CNS_LOSS: False
+        AUX_CNS_LOSS: True
         AUX_PTS_MODEL_CFG:
             NAME: AuxPointHeadSimple
             INPUT_CHANNELS: 64
@@ -64,7 +64,7 @@ MODEL:
                 LOSS_WEIGHTS: {
                     'point_cls_weight': 1.0,
                 }
-        SEG_LOSS: False
+        SEG_LOSS: True
         FUSION_POS: [1, 4]
         FUSION_METHOD: MVX+ACTRv2
         FEATURE_LEVELS: [0]
