@@ -212,12 +212,12 @@ test_pipeline = [
     dict(type="Reformat"),
 ]
 
-train_anno = "data/nuscenes/infos_train_10sweeps_withvelo_filter_True.pkl"
+train_anno = "data/nuscenes/infos_train_mini_1_7_10sweeps_withvelo_filter_True.pkl"
 val_anno = "data/nuscenes/infos_val_10sweeps_withvelo_filter_True.pkl"
 test_anno = None
 
 data = dict(
-    samples_per_gpu=1,
+    samples_per_gpu=3,
     workers_per_gpu=6,
     train=dict(
         type=dataset_type,
