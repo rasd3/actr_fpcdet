@@ -8,7 +8,7 @@ from . import ifn
 @NETWORK2D.register_module
 class PyramidFeat2D(nn.Module):
 
-    def __init__(self, optimize, model_cfg):
+    def __init__(self, optimize, model_cfg, ret_original=False):
         """
         Initialize 2D feature network via pretrained model
         Args:
@@ -17,6 +17,7 @@ class PyramidFeat2D(nn.Module):
         super().__init__()
         self.model_cfg = model_cfg
         self.is_optimize = optimize
+        self.ret_original = ret_original
 
         # Create modules
         self.ifn = getattr(ifn, model_cfg['name'])(
@@ -56,6 +57,8 @@ class PyramidFeat2D(nn.Module):
         for _idx, _layer in enumerate(self.model_cfg.args['feat_extract_layer']):
             image_features = ifn_result[_layer]
             # Channel reduce
+            if self.ret_original:
+                batch_dict[_layer + '_ori_feat2d'] = image_features
             if self.reduce_blocks[_idx] is not None:
                 image_features = self.reduce_blocks[_idx](image_features)
 

@@ -143,7 +143,7 @@ class Point2ImageProjection(nn.Module):
         # Project to image
         image_grid = transform_utils.camera_to_image(project=I_C, points=camera_grid)
 
-        return image_grid.long(), image_depths, batch_voxel.long(), batch_mask
+        return image_grid.long(), image_depths, batch_voxel.long(), batch_mask, point_inv
 
 
     def forward(self, voxel_coords, image_scale, batch_dict, cam_key):
@@ -162,7 +162,7 @@ class Point2ImageProjection(nn.Module):
                 batch_voxel: (B, N, 3), Voxel coordinates in X,Y,Z of point plane
                 point_mask: (B, N), Useful points indictor
         """
-        image_grid, image_depths, batch_voxel, batch_mask = self.transform_grid(voxel_coords=voxel_coords, 
+        image_grid, image_depths, batch_voxel, batch_mask, point_inv = self.transform_grid(voxel_coords=voxel_coords, 
                                                                                 batch_dict=batch_dict,
                                                                                 cam_key=cam_key)
         # Rescale Image grid
@@ -189,6 +189,7 @@ class Point2ImageProjection(nn.Module):
         projection_dict['image_depths'] = image_depths
         projection_dict['batch_voxel'] = batch_voxel
         projection_dict['point_mask'] = point_mask
+        projection_dict['point_inv'] = point_inv
 
         '''
         for image_idx in range(2):

@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn.init import constant_, normal_, uniform_, xavier_uniform_
-from pcdet.models.model_utils.pointformer import LocalTransformer
+from det3d.models.model_utils.pointformer import LocalTransformer
 
 from .ops.modules import MSDeformAttn
 from .actr_utils import inverse_sigmoid

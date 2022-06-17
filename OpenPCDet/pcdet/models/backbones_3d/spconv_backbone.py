@@ -697,6 +697,7 @@ class VoxelBackBone8xFusion(nn.Module):
                     image_features_batch[filter_idx] = x_rgb_batch[
                         :, voxels_2d_int[:, 1], voxels_2d_int[:, 0]
                     ].permute(1, 0)
+                    import pdb; pdb.set_trace()
                     if fuse_sum:
                         image_with_voxelfeature = (
                             image_features_batch + voxel_features_sparse
@@ -805,6 +806,7 @@ class VoxelBackBone8xFusion(nn.Module):
         x = self.conv_input(input_sp_tensor)
 
         x_conv1 = self.conv1(x)
+        import pdb; pdb.set_trace()
         if 1 in self.fusion_pos:
             if "mvx_layer1_feat2d" in img_dict:
                 t_dict = {"layer2_feat2d": img_dict["mvx_layer1_feat2d"]}
@@ -824,6 +826,7 @@ class VoxelBackBone8xFusion(nn.Module):
             self.aux_pts_head(x_conv4, batch_dict["gt_boxes"])
 
         if 4 in self.fusion_pos:
+            import pdb; pdb.set_trace()
             if 0 not in self.feature_levels and "layer1_feat2d" in img_dict:
                 img_dict.pop("layer1_feat2d")
             x_conv4 = self.point_fusion(

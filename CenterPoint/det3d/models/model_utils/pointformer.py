@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from mmcv.cnn import ConvModule
-from pcdet.ops.gather_points.gather_points import gather_points
-from pcdet.ops.furthest_point_sample.points_sampler import Points_Sampler
-from pcdet.ops.group_points.group_points import QueryAndGroup
+from det3d.ops.gather_points.gather_points import gather_points
+from det3d.ops.furthest_point_sample.points_sampler import Points_Sampler
+from det3d.ops.group_points.group_points import QueryAndGroup
 
 class TransformerEncoderLayerPreNorm(nn.Module):
     def __init__(
