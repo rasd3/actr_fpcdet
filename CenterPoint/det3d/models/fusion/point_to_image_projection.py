@@ -60,7 +60,7 @@ class Point2ImageProjection(nn.Module):
 
         return unproject
 
-    def transform_grid(self, voxel_coords, batch_dict, cam_key):
+    def transform_grid(self, voxel_coords, batch_dict, cam_key, d_factor=None):
         """
         Transforms voxel sampling grid into frustum sampling grid
         Args:
@@ -79,7 +79,10 @@ class Point2ImageProjection(nn.Module):
         B = lidar_to_cam.shape[0]
 
         # Create transformation matricies
-        V_G = self.grid_to_lidar.to(lidar_to_cam.device)  # Voxel Grid -> LiDAR (4, 4)
+        voxel_size = [x*d_factor for x in self.voxel_size]
+        grid_to_lidar = self.grid_to_lidar_unproject(pc_min=self.pc_min,
+                                                     voxel_size=voxel_size)
+        V_G = grid_to_lidar.to(lidar_to_cam.device)  # Voxel Grid -> LiDAR (4, 4)
         C_V = lidar_to_cam.float()  # LiDAR -> Camera (B, 4, 4)
         I_C = cam_to_img  # Camera -> Image (B, 3, 3)
 
@@ -90,12 +93,12 @@ class Point2ImageProjection(nn.Module):
             B = B * 4
             for idx in range(B):
                 if idx%4==1:
-                    voxel_coords[batch_idx==idx, 2] = (self.pc_range[3] - self.pc_range[0])/self.voxel_size[0] - voxel_coords[batch_idx==idx, 2] - 1
+                    voxel_coords[batch_idx==idx, 2] = (self.pc_range[3] - self.pc_range[0])/voxel_size[0] - voxel_coords[batch_idx==idx, 2] - 1
                 if idx%4==2:
-                    voxel_coords[batch_idx==idx, 1] = (self.pc_range[4] - self.pc_range[1])/self.voxel_size[1] - voxel_coords[batch_idx==idx, 1] - 1
+                    voxel_coords[batch_idx==idx, 1] = (self.pc_range[4] - self.pc_range[1])/voxel_size[1] - voxel_coords[batch_idx==idx, 1] - 1
                 if idx%4==3:
-                    voxel_coords[batch_idx==idx, 1] = (self.pc_range[3] - self.pc_range[0])/self.voxel_size[0] - voxel_coords[batch_idx==idx, 1] - 1
-                    voxel_coords[batch_idx==idx, 2] = (self.pc_range[4] - self.pc_range[1])/self.voxel_size[1] - voxel_coords[batch_idx==idx, 2] - 1
+                    voxel_coords[batch_idx==idx, 1] = (self.pc_range[3] - self.pc_range[0])/voxel_size[0] - voxel_coords[batch_idx==idx, 1] - 1
+                    voxel_coords[batch_idx==idx, 2] = (self.pc_range[4] - self.pc_range[1])/voxel_size[1] - voxel_coords[batch_idx==idx, 2] - 1
 
         point_grid = transform_points(trans_01=V_G.unsqueeze(0), points_1=voxel_coords[:,1:].unsqueeze(0))
         point_grid = point_grid.squeeze()
@@ -146,7 +149,7 @@ class Point2ImageProjection(nn.Module):
         return image_grid.long(), image_depths, batch_voxel.long(), batch_mask, point_inv
 
 
-    def forward(self, voxel_coords, image_scale, batch_dict, cam_key):
+    def forward(self, voxel_coords, image_scale, batch_dict, cam_key, d_factor=None):
         """
         Generates sampling grid for frustum features
         Args:
@@ -155,6 +158,7 @@ class Point2ImageProjection(nn.Module):
                 lidar_to_cam: (B, 4, 4), LiDAR to camera frame transformation
                 cam_to_img: (B, 3, 4), Camera projection matrix
                 image_shape: (B, 2), Image shape [H, W]
+            d_factor: downsampled factor
         Returns:
             projection_dict: 
                 image_grid: (B, N, 2), Image coordinates in X,Y of image plane
@@ -162,9 +166,8 @@ class Point2ImageProjection(nn.Module):
                 batch_voxel: (B, N, 3), Voxel coordinates in X,Y,Z of point plane
                 point_mask: (B, N), Useful points indictor
         """
-        image_grid, image_depths, batch_voxel, batch_mask, point_inv = self.transform_grid(voxel_coords=voxel_coords, 
-                                                                                batch_dict=batch_dict,
-                                                                                cam_key=cam_key)
+        image_grid, image_depths, batch_voxel, batch_mask, point_inv = self.transform_grid(
+            voxel_coords=voxel_coords, batch_dict=batch_dict, cam_key=cam_key, d_factor=d_factor)
         # Rescale Image grid
         image_grid = (image_scale * image_grid.float()).long()
 

@@ -51,22 +51,20 @@ class VoxelWithPointProjection(nn.Module):
         Returns:
             voxel_feat: (N, C), Fused voxel features
         """
-        if fuse_mode is not None:
-            self.fuse_mode = fuse_mode
         image_grid = image_grid[:,[1,0]] # X,Y -> Y,X
 
-        if self.fuse_mode == 'sum':
+        if fuse_mode == 'sum':
             fuse_feat = image_feat[:,image_grid[:,0],image_grid[:,1]]
             voxel_feat += fuse_feat.permute(1,0)
-        elif self.fuse_mode == 'mean':
+        elif fuse_mode == 'mean':
             fuse_feat = image_feat[:,image_grid[:,0],image_grid[:,1]]
             voxel_feat = (voxel_feat + fuse_feat.permute(1,0)) / 2
-        elif self.fuse_mode == 'concat':
+        elif fuse_mode == 'concat':
             fuse_feat = image_feat[:,image_grid[:,0],image_grid[:,1]]
             concat_feat = torch.cat([fuse_feat, voxel_feat.permute(1,0)], dim=0)
             voxel_feat = self.fuse_blocks[layer_name](concat_feat.unsqueeze(0))[0]
             voxel_feat = voxel_feat.permute(1,0)
-        elif self.fuse_mode == 'pfat':
+        elif fuse_mode == 'pfat':
             fuse_feat = self.pfat(v_feat=voxel_feat.unsqueeze(0),
                                   grid=image_grid.unsqueeze(0),
                                   i_feats=[image_feat.unsqueeze(0)],
@@ -78,7 +76,7 @@ class VoxelWithPointProjection(nn.Module):
         
         return voxel_feat
 
-    def forward(self, batch_dict, encoded_voxel=None, layer_name=None, img_conv_func=None, fuse_mode=None):
+    def forward(self, batch_dict, encoded_voxel=None, layer_name=None, img_conv_func=None, fuse_mode=None, d_factor=None):
         """
         Generates voxel features via 3D transformation and sampling
         Args:
@@ -93,13 +91,22 @@ class VoxelWithPointProjection(nn.Module):
                 voxel_features: (B, C, Z, Y, X), Image voxel features
             voxel_features: (N, C), Sparse Image voxel features
     """
+        batch_size = len(batch_dict['image_shape'][self.image_list[0].lower()])
+        if fuse_mode == 'pfat':
+            img_feat_n = []
+            img_grid_n = [[] for _ in range(batch_size)]
+            v_feat_n = [[] for _ in range(batch_size)]
+            point_inv_n = [[] for _ in range(batch_size)]
+            mask_n = [[] for _ in range(batch_size)]
         for cam_key in self.image_list:
             cam_key = cam_key.lower()
             # Generate sampling grid for frustum volume
             projection_dict = self.point_projector(voxel_coords=encoded_voxel.indices.float(),
                                                    image_scale=self.image_scale,
                                                    batch_dict=batch_dict, 
-                                                   cam_key=cam_key)
+                                                   cam_key=cam_key,
+                                                   d_factor=d_factor
+                                                   )
 
             # check 
             if encoded_voxel is not None:
@@ -107,7 +114,6 @@ class VoxelWithPointProjection(nn.Module):
             else:
                 in_bcakbone = False
                 encoded_voxel = batch_dict['encoded_spconv_tensor']
-            batch_size = len(batch_dict['image_shape'][cam_key])
             if not self.training and self.double_flip:
                 batch_size = batch_size * 4
             for _idx in range(batch_size): #(len(batch_dict['image_shape'][cam_key])):
@@ -149,11 +155,54 @@ class VoxelWithPointProjection(nn.Module):
                     image_grid[:,1] *= (feat_shape[0]/raw_shape[0])
                     image_grid = image_grid.long()
 
-                voxel_feat[voxel_mask] = self.fusion(image_feat, voxel_feat[voxel_mask], 
-                                                     image_grid[point_mask], layer_name, point_inv[point_mask],
-                                                     fuse_mode=fuse_mode)
+                if fuse_mode == 'pfat':
+                    img_feat_n.append(image_feat)
+                    img_grid_n[_idx].append(image_grid[point_mask])
+                    point_inv_n[_idx].append(point_inv[point_mask])
+                    v_feat_n[_idx].append(voxel_feat[voxel_mask])
+                    mask_n[_idx].append(voxel_mask)
+                else:
+                    voxel_feat[voxel_mask] = self.fusion(image_feat, voxel_feat[voxel_mask], 
+                                                         image_grid[point_mask], layer_name, 
+                                                         point_inv[point_mask], fuse_mode=fuse_mode)
+                    encoded_voxel.features[index_mask] = voxel_feat
+        if fuse_mode  == 'pfat':
+            # 6*b, c, w, h -> b*6, c, w, h
+            img_feat_n = torch.stack(img_feat_n)
+            c, w, h = img_feat_n.shape[1:]
+            img_feat_n = img_feat_n.reshape(6, batch_size, c, w, h)
+            img_feat_n = img_feat_n.transpose(1, 0).reshape(-1, c, w, h)
 
-                encoded_voxel.features[index_mask] = voxel_feat
+            # aggregate
+            max_ne = max([img_grid_n[b][i].shape[0] for b in range(batch_size) for i in range(6)])
+            v_channel = voxel_feat.shape[1]
+            img_grid_b = torch.zeros((batch_size*6, max_ne, 2)).cuda()
+            pts_inv_b = torch.zeros((batch_size*6, max_ne, 3)).cuda()
+            v_feat_b = torch.zeros((batch_size*6, max_ne, v_channel)).cuda()
+            for b in range(batch_size):
+                for i in range(6):
+                    ne = img_grid_n[b][i].shape[0]
+                    img_grid_b[b*6+i, :ne] = img_grid_n[b][i]
+                    pts_inv_b[b*6+i, :ne] = point_inv_n[b][i]
+                    v_feat_b[b*6+i, :ne] = v_feat_n[b][i]
 
-        return encoded_voxel
+            enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
+                                 lidar_grid=pts_inv_b)
+            # split
+            st = 0
+            for b in range(batch_size):
+                n_ne = (encoded_voxel.indices[:, 0] == b).sum()
+                for i in range(6):
+                    try:
+                        mask = mask_n[b][i]
+                        num_ne = mask.nonzero().shape[0]
+                        encoded_voxel.features[st:st+n_ne][mask] = enh_feat[b*6+i][:num_ne]
+                    except:
+                        import pdb; pdb.set_trace()
+                        abcd = 1
+                st += n_ne
+
+            return encoded_voxel
+        else:
+            return encoded_voxel
 

@@ -169,7 +169,7 @@ test_anno = None
 
 data = dict(
     samples_per_gpu=8,
-    workers_per_gpu=8,
+    workers_per_gpu=3,
     train=dict(
         type=dataset_type,
         root_path=data_root,

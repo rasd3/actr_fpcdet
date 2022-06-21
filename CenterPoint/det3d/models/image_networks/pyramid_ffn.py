@@ -58,7 +58,7 @@ class PyramidFeat2D(nn.Module):
             image_features = ifn_result[_layer]
             # Channel reduce
             if self.ret_original:
-                batch_dict[_layer + '_ori_feat2d'] = image_features
+                batch_dict[_layer + '_ori_feat2d'] = image_features.clone()
             if self.reduce_blocks[_idx] is not None:
                 image_features = self.reduce_blocks[_idx](image_features)
 

@@ -27,6 +27,7 @@ voxel_generator = dict(
 )
 
 image_scale = 2/3
+#  image_scale = 0.5
 image_list = ['CAM_FRONT', 'CAM_FRONT_LEFT', 'CAM_FRONT_RIGHT',
               'CAM_BACK',  'CAM_BACK_LEFT',  'CAM_BACK_RIGHT']
 depth_thres = {'CAM_FRONT': 1,  'CAM_FRONT_LEFT': 0, 'CAM_FRONT_RIGHT': 0,
@@ -86,7 +87,7 @@ model = dict(
             attn_feat_agg_method='unique',
             feat_agg_method='replace'
         ),
-        interpolate=True,
+        interpolate=False,
         voxel_size=voxel_generator['voxel_size'],
         pc_range=voxel_generator['range'],
         image_list=image_list,
@@ -230,11 +231,12 @@ test_pipeline = [
 ]
 
 train_anno = "data/nuscenes/infos_train_10sweeps_withvelo_filter_True.pkl"
+train_anno = "data/nuscenes/infos_train_mini_1_7_10sweeps_withvelo_filter_True.pkl"
 val_anno = "data/nuscenes/infos_val_10sweeps_withvelo_filter_True.pkl"
 test_anno = None
 
 data = dict(
-    samples_per_gpu=1,
+    samples_per_gpu=2,
     workers_per_gpu=6,
     train=dict(
         type=dataset_type,
