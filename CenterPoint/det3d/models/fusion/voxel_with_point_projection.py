@@ -188,18 +188,15 @@ class VoxelWithPointProjection(nn.Module):
 
             enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
                                  lidar_grid=pts_inv_b)
+
             # split
             st = 0
             for b in range(batch_size):
                 n_ne = (encoded_voxel.indices[:, 0] == b).sum()
                 for i in range(6):
-                    try:
-                        mask = mask_n[b][i]
-                        num_ne = mask.nonzero().shape[0]
-                        encoded_voxel.features[st:st+n_ne][mask] = enh_feat[b*6+i][:num_ne]
-                    except:
-                        import pdb; pdb.set_trace()
-                        abcd = 1
+                    mask = mask_n[b][i]
+                    num_ne = mask.nonzero().shape[0]
+                    encoded_voxel.features[st:st+n_ne][mask] = enh_feat[b*6+i][:num_ne]
                 st += n_ne
 
             return encoded_voxel
