@@ -1,5 +1,5 @@
 DATASET: 'KittiDataset'
-DATA_PATH: '../data/kitti'
+DATA_PATH: '/mnt/sdb/kypark/actr_fpcdet_0607/actr_fpcdet/OpenPCDet/data/kitti'
 
 POINT_CLOUD_RANGE: [0, -40, -3, 70.4, 40, 1]
 

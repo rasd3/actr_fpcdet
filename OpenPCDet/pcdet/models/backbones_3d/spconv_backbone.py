@@ -9,7 +9,7 @@ from .SemanticSeg.pyramid_ffn import PyramidFeat2D
 from pcdet.utils import common_utils
 from pcdet.models.model_utils.actr import build as build_actr
 from ...utils.spconv_utils import replace_feature, spconv
-from pcdet.models.model_utils.attentions import devil, pts2img, BasicGate
+from pcdet.models.model_utils import attentions
 from pcdet.models import dense_heads
 from pcdet.models.backbones_3d.SemanticSeg.aux_seg_loss import AuxConsistencyLoss
 
@@ -966,12 +966,14 @@ class VoxelBackBone8xFusionv2(nn.Module):
             self.max_num_nev = actr_cfg.get("max_num_ne_voxel", 26000)
 
         self.attention = model_cfg.get("I_FUSION_METHOD", False)
-        if self.attention == "DEVIL":
-            self.iactr = devil()
-        elif self.attention == "BasicGate":
+        if self.attention:
             self.iactr_cfg = model_cfg.get("IACTR_CFG", None)
-            self.iactr = BasicGate(
-                g_channel_list=self.iactr_cfg["num_channels"][
+            self.iactr = attentions.__all__[self.attention](
+                img_channel_list=self.iactr_cfg["img_num_channels"][
+                    self.feature_levels[0] : self.feature_levels[0]
+                    + len(self.feature_levels)
+                ],
+                pts_channel_list=self.iactr_cfg["pts_num_channels"][
                     self.feature_levels[0] : self.feature_levels[0]
                     + len(self.feature_levels)
                 ],
@@ -980,7 +982,7 @@ class VoxelBackBone8xFusionv2(nn.Module):
                 point_cloud_range=self.point_cloud_range,
                 inv_idx=self.inv_idx,
             )
-
+            
         self.conv1 = spconv.SparseSequential(
             block(16, 16, 3, norm_fn=norm_fn, padding=1, indice_key="subm1"),
         )
