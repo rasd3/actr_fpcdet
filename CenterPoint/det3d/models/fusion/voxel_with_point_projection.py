@@ -9,7 +9,9 @@ from .point_to_image_projection import Point2ImageProjection
 @FUSION.register_module
 class VoxelWithPointProjection(nn.Module):
     def __init__(self, fuse_mode, interpolate, voxel_size, pc_range, image_list, image_scale=1,
-                 depth_thres=0, double_flip=False, layer_channel=None, pfat_cfg=None, lt_cfg=None):
+                 depth_thres=0, double_flip=False, layer_channel=None, pfat_cfg=None, lt_cfg=None,
+                 model_name='ACTR'
+                 ):
         """
         Initializes module to transform frustum features to voxel features via 3D transformation and sampling
         Args:
@@ -38,7 +40,7 @@ class VoxelWithPointProjection(nn.Module):
                              "bias": False}
                 self.fuse_blocks[_layer] = BasicBlock1D(**block_cfg)
         if self.fuse_mode == 'pfat':
-            self.pfat = build_actr(pfat_cfg, lt_cfg=lt_cfg)
+            self.pfat = build_actr(pfat_cfg, lt_cfg=lt_cfg, model_name=model_name)
 
 
     def fusion(self, image_feat, voxel_feat, image_grid, layer_name=None, point_inv=None, fuse_mode=None):
@@ -186,6 +188,7 @@ class VoxelWithPointProjection(nn.Module):
                     pts_inv_b[b*6+i, :ne] = point_inv_n[b][i]
                     v_feat_b[b*6+i, :ne] = v_feat_n[b][i]
 
+            img_grid_b /= torch.tensor(feat_shape[::-1]).cuda()
             enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
                                  lidar_grid=pts_inv_b)
 

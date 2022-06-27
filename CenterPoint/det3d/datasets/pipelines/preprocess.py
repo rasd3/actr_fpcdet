@@ -264,6 +264,7 @@ class Preprocess(object):
                             for _count, _box in zip(cam_count, bbox):
                                 img_crop = sample_crops[_count]
                                 if len(img_crop) == 0: continue
+                                if _box[2] - _box[0] < 1 or _box[3] - _box[1] < 0: continue
                                 img_crop = cv2.resize(img_crop, tuple(_box[[2,3]]-_box[[0,1]]))
                                 cam_images[_key][_box[1]:_box[3],_box[0]:_box[2]] = img_crop
                                 paste_mask[_box[1]:_box[3],_box[0]:_box[2]] = _count
