@@ -66,13 +66,6 @@ class VoxelWithPointProjection(nn.Module):
             concat_feat = torch.cat([fuse_feat, voxel_feat.permute(1,0)], dim=0)
             voxel_feat = self.fuse_blocks[layer_name](concat_feat.unsqueeze(0))[0]
             voxel_feat = voxel_feat.permute(1,0)
-        elif fuse_mode == 'pfat':
-            fuse_feat = self.pfat(v_feat=voxel_feat.unsqueeze(0),
-                                  grid=image_grid.unsqueeze(0),
-                                  i_feats=[image_feat.unsqueeze(0)],
-                                  lidar_grid=point_inv.unsqueeze(0)
-                                  )
-            voxel_feat += fuse_feat[0]
         else:
             raise NotImplementedError
         
@@ -188,7 +181,29 @@ class VoxelWithPointProjection(nn.Module):
                     pts_inv_b[b*6+i, :ne] = point_inv_n[b][i]
                     v_feat_b[b*6+i, :ne] = v_feat_n[b][i]
 
+            # for visualize
+            if True:
+                import cv2
+                cam_list = list(batch_dict['images'].keys())
+                for b in range(batch_size):
+                    for i in range(6):
+                        img_feat = img_feat_n[b*6+i].max(0)[0].detach().cpu()
+                        img_feat_norm = ((img_feat - img_feat.min()) / (img_feat.max() - img_feat.min()) * 255).to(torch.uint8).numpy()
+                        img_feat_norm_jet = cv2.applyColorMap(img_feat_norm, cv2.COLORMAP_JET)
+                        cv2.imwrite('./vis/%06d_feat.png' % (b*6+i), img_feat_norm_jet)
+
+                        img_grid = img_grid_b[b*6+i].to(torch.uint8).detach().cpu().numpy()
+                        img_feat_norm[img_grid[:, 1], img_grid[:, 0]] = 255
+                        img_feat_norm_jet = cv2.applyColorMap(img_feat_norm, cv2.COLORMAP_JET)
+                        cv2.imwrite('./vis/%06d_feat_proj.png' % (b*6+i), img_feat_norm_jet)
+
+                        img_o = batch_dict['images'][cam_list[i]][b]
+                        img_o = ((img_o - img_o.min()) / (img_o.max() - img_o.min()) * 255).to(torch.uint8).numpy()
+                        cv2.imwrite('./vis/%06d_original.png' % (b*6+i), img_o)
+                import pdb; pdb.set_trace()
+
             img_grid_b /= torch.tensor(feat_shape[::-1]).cuda()
+            import pdb; pdb.set_trace()
             enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
                                  lidar_grid=pts_inv_b)
 
@@ -199,7 +214,8 @@ class VoxelWithPointProjection(nn.Module):
                 for i in range(6):
                     mask = mask_n[b][i]
                     num_ne = mask.nonzero().shape[0]
-                    encoded_voxel.features[st:st+n_ne][mask] = enh_feat[b*6+i][:num_ne]
+                    # for now fuse by sum
+                    encoded_voxel.features[st:st+n_ne][mask] += enh_feat[b*6+i][:num_ne]
                 st += n_ne
 
             return encoded_voxel
