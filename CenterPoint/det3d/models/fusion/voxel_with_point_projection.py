@@ -182,7 +182,7 @@ class VoxelWithPointProjection(nn.Module):
                     v_feat_b[b*6+i, :ne] = v_feat_n[b][i]
 
             # for visualize
-            if True:
+            if False:
                 import cv2
                 cam_list = list(batch_dict['images'].keys())
                 for b in range(batch_size):
@@ -203,7 +203,6 @@ class VoxelWithPointProjection(nn.Module):
                 import pdb; pdb.set_trace()
 
             img_grid_b /= torch.tensor(feat_shape[::-1]).cuda()
-            import pdb; pdb.set_trace()
             enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
                                  lidar_grid=pts_inv_b)
 
