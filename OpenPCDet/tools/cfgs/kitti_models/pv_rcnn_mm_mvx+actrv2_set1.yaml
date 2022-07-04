@@ -50,38 +50,24 @@ MODEL:
     BACKBONE_3D:
         NAME: VoxelBackBone8xFusion
         USE_IMG: True
-        AUX_PTS_LOSS: True
-        AUX_CNS_LOSS: False
-        AUX_PTS_MODEL_CFG:
-            NAME: AuxPointHeadSimple
-            INPUT_CHANNELS: 64
-            CLS_FC: [64, 64]
-            CLASS_AGNOSTIC: True
-            TARGET_CONFIG:
-                GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
-            LOSS_CONFIG:
-                LOSS_REG: smooth-l1
-                LOSS_WEIGHTS: {
-                    'point_cls_weight': 1.0,
-                }
-        SEG_LOSS: False
         FUSION_POS: [1, 4]
         FUSION_METHOD: MVX+ACTRv2
         FEATURE_LEVELS: [0]
         LT_CFG: {
-            npoint: 2048,
-            radius: 2.0,
-            nsample: 32,
-            num_layers: 2
+          npoint: 2048,
+          radius: 2.0,
+          nsample: 32,
+          num_layers: 2,
+          attn_feat_agg_method: 'sum',
         }
         ACTR_CFG: {
-            fusion_method: 'sum',
-            num_bins: 80,
-            num_channels: [256] #, 512], #, 1024],
-            query_num_feat: 64,
-            num_enc_layers: 4,
-            max_num_ne_voxel: 10000,
-            pos_encode_method: 'depth'
+          fusion_method: 'sum',
+          num_bins: 80,
+          num_channels: [256, 512], #, 1024],
+          query_num_feat: 64,
+          num_enc_layers: 4,
+          max_num_ne_voxel: 20000,
+          pos_encode_method: 'depth'
         }
         IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
 

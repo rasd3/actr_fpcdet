@@ -21,7 +21,10 @@ class PyramidFeat2D(nn.Module):
         self.ifn = SemDeepLabV3(num_classes=model_cfg.num_class,
                                 backbone_name=model_cfg.backbone,
                                 **model_cfg.args)
-        self.fusion_method = model_cfg.fusion_method
+        if 'fusion_method' in dir(model_cfg):
+            self.fusion_method = model_cfg.fusion_method
+        else:
+            self.fusion_method = 'MVX'
         self.reduce_blocks = torch.nn.ModuleList()
         self.out_channels = {}
         for _idx, _channel in enumerate(

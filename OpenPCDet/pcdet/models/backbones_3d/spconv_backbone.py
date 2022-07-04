@@ -486,9 +486,15 @@ class VoxelBackBone8xFusion(nn.Module):
             FLAG = True
             self.feature_levels = [0] + self.feature_levels
         feat_idx = np.array(self.feature_levels)
+
         model_cfg_seg["args"]["feat_extract_layer"] = np.array(
             model_cfg_seg["args"]["feat_extract_layer"]
         )[feat_idx].tolist()
+        for key in ["in_channels", "out_channels", "kernel_size", "stride", "bias"]:
+            model_cfg_seg["channel_reduce"][key] = np.array(
+                model_cfg_seg["channel_reduce"][key]
+            )[feat_idx].tolist()
+
         for key in model_cfg_seg["channel_reduce"].keys():
             model_cfg_seg["channel_reduce"][key] = np.array(
                 model_cfg_seg["channel_reduce"][key]
@@ -509,7 +515,6 @@ class VoxelBackBone8xFusion(nn.Module):
         self.semseg = PyramidFeat2D(
             optimize=True, model_cfg=cfg_dict, seg_loss=self.seg_loss
         )
-        self.img_channel = 16
         if "ACTR" in self.fusion_method:
             model_name = (
                 self.fusion_method
@@ -650,6 +655,7 @@ class VoxelBackBone8xFusion(nn.Module):
 
                 calib = calibs[b]
                 voxels_3d_batch = voxels_3d[batch_index == b]
+                #  voxels_3d_batch = batch_dict['points'][batch_dict['points'][:, 0] == b][:, [3, 2, 1]]
                 voxel_features_sparse = x.features[batch_index == b]
                 num_points.append(voxel_features_sparse.shape[0])
 
@@ -697,7 +703,6 @@ class VoxelBackBone8xFusion(nn.Module):
                     image_features_batch[filter_idx] = x_rgb_batch[
                         :, voxels_2d_int[:, 1], voxels_2d_int[:, 0]
                     ].permute(1, 0)
-                    import pdb; pdb.set_trace()
                     if fuse_sum:
                         image_with_voxelfeature = (
                             image_features_batch + voxel_features_sparse
@@ -806,7 +811,6 @@ class VoxelBackBone8xFusion(nn.Module):
         x = self.conv_input(input_sp_tensor)
 
         x_conv1 = self.conv1(x)
-        import pdb; pdb.set_trace()
         if 1 in self.fusion_pos:
             if "mvx_layer1_feat2d" in img_dict:
                 t_dict = {"layer2_feat2d": img_dict["mvx_layer1_feat2d"]}
@@ -826,7 +830,6 @@ class VoxelBackBone8xFusion(nn.Module):
             self.aux_pts_head(x_conv4, batch_dict["gt_boxes"])
 
         if 4 in self.fusion_pos:
-            import pdb; pdb.set_trace()
             if 0 not in self.feature_levels and "layer1_feat2d" in img_dict:
                 img_dict.pop("layer1_feat2d")
             x_conv4 = self.point_fusion(
@@ -952,7 +955,6 @@ class VoxelBackBone8xFusionv2(nn.Module):
         cfg_dict = ConfigDict("SemDeepLabV3")
         objDict.to_object(cfg_dict, **model_cfg_seg)
         self.semseg = PyramidFeat2D(optimize=True, model_cfg=cfg_dict)
-        self.img_channel = 16
         if "ACTR" in self.fusion_method:
             model_name = (
                 self.fusion_method
@@ -1095,7 +1097,7 @@ class VoxelBackBone8xFusionv2(nn.Module):
 
                 calib = calibs[b]
                 voxels_3d_batch = voxels_3d[batch_index == b]
-                voxel_features_sparse = x_list[-1].features[batch_index == b]
+                #  voxel_features_sparse = x_list[-1].features[batch_index == b]
                 num_points.append(voxel_features_sparse.shape[0])
 
                 # Reverse the point cloud transformations to the original coords.
@@ -1114,7 +1116,7 @@ class VoxelBackBone8xFusionv2(nn.Module):
                 voxels_2d, _ = calib.lidar_to_img(
                     voxels_3d_batch[:, self.inv_idx].cpu().numpy()
                 )
-                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm = voxels_2d / np.array([h, w])
 
                 voxels_2d_int = torch.Tensor(voxels_2d).to(x_rgb_batch.device).long()
 
@@ -1170,7 +1172,7 @@ class VoxelBackBone8xFusionv2(nn.Module):
                             .numpy()
                             .astype(np.uint8)[..., [2, 1, 0]]
                         )
-                        voxels_2d = (coor_2d_list[b] * np.array([w, h])).astype(np.int)
+                        voxels_2d = (coor_2d_list[b] * np.array([h, w])).astype(np.int)
 
                         for pts in voxels_2d:
                             if pts[0] < 0 or pts[1] < 0 or pts[1] > h or pts[0] > w:

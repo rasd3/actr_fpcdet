@@ -336,13 +336,12 @@ class LocalTransformer(nn.Module):
                 idx_u, idx_i = unique_idx(idx_f)
                 attn_features[b][:, idx_u] = feat_f[:, idx_i]
             elif self.attn_feat_agg_method == "sum":
-                #  attn_features[b].index_add_(1, idx_f.to(torch.long), feat_f.clone())
                 attn_features[b] = torch.index_add(
                     attn_features[b], 1, idx_f.to(torch.long), feat_f.clone()
                 )
-                attn_features[b] = nn.functional.normalize(
-                    attn_features[b].clone(), dim=1
-                )
+                idx_cnt = torch.bincount(idx_f)
+                idx_nz = idx_cnt.nonzero().squeeze()
+                attn_features[b][:, idx_nz] /= idx_cnt[idx_nz]
             else:
                 NotImplementedError
 
