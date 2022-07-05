@@ -65,7 +65,7 @@ MODEL:
           num_channels: [256], #, 512], #, 1024],
           query_num_feat: 64,
           num_enc_layers: 4,
-          max_num_ne_voxel: 10000,
+          max_num_ne_voxel: 20000,
           pos_encode_method: 'depth'
         }
         IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
