@@ -91,6 +91,7 @@ class VoxelWithPointProjection(nn.Module):
             img_feat_n = []
             img_grid_n = [[] for _ in range(batch_size)]
             v_feat_n = [[] for _ in range(batch_size)]
+            v_i_feat_n = [[] for _ in range(batch_size)]
             point_inv_n = [[] for _ in range(batch_size)]
             mask_n = [[] for _ in range(batch_size)]
         for cam_key in self.image_list:
@@ -156,12 +157,15 @@ class VoxelWithPointProjection(nn.Module):
                     point_inv_n[_idx].append(point_inv[point_mask])
                     v_feat_n[_idx].append(voxel_feat[voxel_mask])
                     mask_n[_idx].append(voxel_mask)
+                    # for image feat
+                    v_i_feat = image_feat[:, image_grid[point_mask][:, 1], image_grid[point_mask][:, 0]]
+                    v_i_feat_n[_idx].append(v_i_feat.permute(1, 0))
                 else:
                     voxel_feat[voxel_mask] = self.fusion(image_feat, voxel_feat[voxel_mask], 
                                                          image_grid[point_mask], layer_name, 
                                                          point_inv[point_mask], fuse_mode=fuse_mode)
                     encoded_voxel.features[index_mask] = voxel_feat
-        if fuse_mode  == 'pfat':
+        if fuse_mode == 'pfat':
             # 6*b, c, w, h -> b*6, c, w, h
             img_feat_n = torch.stack(img_feat_n)
             c, w, h = img_feat_n.shape[1:]
@@ -174,12 +178,14 @@ class VoxelWithPointProjection(nn.Module):
             img_grid_b = torch.zeros((batch_size*6, max_ne, 2)).cuda()
             pts_inv_b = torch.zeros((batch_size*6, max_ne, 3)).cuda()
             v_feat_b = torch.zeros((batch_size*6, max_ne, v_channel)).cuda()
+            v_i_feat_b = torch.zeros((batch_size*6, max_ne, c)).cuda()
             for b in range(batch_size):
                 for i in range(6):
                     ne = img_grid_n[b][i].shape[0]
                     img_grid_b[b*6+i, :ne] = img_grid_n[b][i]
                     pts_inv_b[b*6+i, :ne] = point_inv_n[b][i]
                     v_feat_b[b*6+i, :ne] = v_feat_n[b][i]
+                    v_i_feat_b[b*6+i, :ne] = v_i_feat_n[b][i]
 
             # for visualize
             if False:
@@ -200,11 +206,10 @@ class VoxelWithPointProjection(nn.Module):
                         img_o = batch_dict['images'][cam_list[i]][b]
                         img_o = ((img_o - img_o.min()) / (img_o.max() - img_o.min()) * 255).to(torch.uint8).numpy()
                         cv2.imwrite('./vis/%06d_original.png' % (b*6+i), img_o)
-                import pdb; pdb.set_trace()
 
             img_grid_b /= torch.tensor(feat_shape[::-1]).cuda()
             enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
-                                 lidar_grid=pts_inv_b)
+                                 lidar_grid=pts_inv_b, v_i_feat=v_i_feat_b)
 
             # split
             st = 0

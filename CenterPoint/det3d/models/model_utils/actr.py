@@ -48,6 +48,7 @@ class ACTR(nn.Module):
         max_num_ne_voxel,
         p_num_channels=None,
         pos_encode_method="image_coor",
+        feature_modal='lidar',
     ):
         """Initializes the model.
         Parameters:
@@ -86,6 +87,14 @@ class ACTR(nn.Module):
             nn.init.xavier_uniform_(proj[0].weight, gain=1)
             nn.init.constant_(proj[0].bias, 0)
         # add
+        if feature_modal in ['image', 'hybrid']:
+            self.i_input_proj = nn.Sequential(
+                nn.Conv1d(num_channels[0], hidden_dim, kernel_size=1),
+                nn.GroupNorm(32, hidden_dim),
+            )
+            nn.init.xavier_uniform_(self.i_input_proj[0].weight, gain=1)
+            nn.init.constant_(self.i_input_proj[0].bias, 0)
+        self.feature_modal = feature_modal
         self.max_num_ne_voxel = max_num_ne_voxel
         self.pos_encode_method = pos_encode_method
         assert self.pos_encode_method in ["image_coor", "depth", "depth_learn"]
@@ -124,6 +133,7 @@ class ACTR(nn.Module):
         v_feat,
         grid,
         i_feats,
+        v_i_feat=None,
         lidar_grid=None,
     ):
         """Parameters:
@@ -138,6 +148,12 @@ class ACTR(nn.Module):
         # get query feature & ref points
         q_feat_flattens = v_feat
         q_ref_coors = grid
+        if self.feature_modal in ['image', 'hybrid']:
+            assert v_i_feat is not None
+            q_i_feat_flattens = self.i_input_proj(v_i_feat.transpose(1, 2))
+            q_i_feat_flattens = q_i_feat_flattens.transpose(1, 2)
+            if self.feature_modal == 'image':
+                q_feat_flattens = q_i_feat_flattens
 
         if self.pos_encode_method == "image_coor":
             q_pos = self.q_position_embedding(q_ref_coors).transpose(1, 2)
@@ -619,6 +635,7 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
     args.pos_encode_method = model_cfg.pos_encode_method
     args.max_num_ne_voxel = model_cfg.max_num_ne_voxel
     args.num_feature_levels = len(model_cfg.num_channels)
+    args.feature_modal = model_cfg.get('feature_modal', 'lidar')
 
     model_class = model_dict[model_name]
     transformer = build_deformable_transformer(args, model_name=model_name, lt_cfg=lt_cfg)
@@ -629,6 +646,8 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
         p_num_channels=model_cfg.get('p_num_channels', None),
         num_channels=num_channels,
         max_num_ne_voxel=args.max_num_ne_voxel,
-        pos_encode_method=args.pos_encode_method)
+        pos_encode_method=args.pos_encode_method,
+        feature_modal=args.feature_modal
+    )
 
     return model

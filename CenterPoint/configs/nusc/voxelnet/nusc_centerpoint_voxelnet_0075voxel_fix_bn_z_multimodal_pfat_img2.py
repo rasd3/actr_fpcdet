@@ -73,7 +73,7 @@ model = dict(
         fuse_mode='pfat',
         pfat_cfg=dict(
             fusion_method='sum',
-            feature_modal='lidar',
+            feature_modal='image',
             num_bins=80,
             num_channels=[256], #, 256, 256, 256],
             query_num_feat=128,
@@ -238,7 +238,7 @@ test_anno = None
 
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=6,
+    workers_per_gpu=2,
     train=dict(
         type=dataset_type,
         root_path=data_root,
