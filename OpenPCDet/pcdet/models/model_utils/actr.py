@@ -48,6 +48,7 @@ class ACTR(nn.Module):
         max_num_ne_voxel,
         p_num_channels=None,
         pos_encode_method="image_coor",
+        feature_modal='lidar',
     ):
         """Initializes the model.
         Parameters:
@@ -75,8 +76,7 @@ class ACTR(nn.Module):
         else:
             self.input_proj = nn.ModuleList([
                 nn.Sequential(
-                    nn.Conv2d(
-                        num_channels[0], hidden_dim, kernel_size=1),
+                    nn.Conv2d(num_channels[0], hidden_dim, kernel_size=1),
                     nn.GroupNorm(32, hidden_dim),
                 )
             ])
@@ -85,7 +85,15 @@ class ACTR(nn.Module):
         for proj in self.input_proj:
             nn.init.xavier_uniform_(proj[0].weight, gain=1)
             nn.init.constant_(proj[0].bias, 0)
+        if feature_modal in ['image', 'hybrid']:
+            self.i_input_proj = nn.Sequential(
+                nn.Conv1d(num_channels[0], hidden_dim, kernel_size=1),
+                nn.GroupNorm(32, hidden_dim),
+            )
+            nn.init.xavier_uniform_(self.i_input_proj[0].weight, gain=1)
+            nn.init.constant_(self.i_input_proj[0].bias, 0)
         # add
+        self.feature_modal = feature_modal
         self.max_num_ne_voxel = max_num_ne_voxel
         self.pos_encode_method = pos_encode_method
         assert self.pos_encode_method in ["image_coor", "depth", "depth_learn"]
@@ -124,6 +132,7 @@ class ACTR(nn.Module):
         v_feat,
         grid,
         i_feats,
+        v_i_feat=None,
         lidar_grid=None,
     ):
         """Parameters:
@@ -138,6 +147,12 @@ class ACTR(nn.Module):
         # get query feature & ref points
         q_feat_flattens = v_feat
         q_ref_coors = grid
+        if self.feature_modal in ['image', 'hybrid']:
+            assert v_i_feat is not None
+            q_i_feat_flattens = self.i_input_proj(v_i_feat.transpose(1, 2))
+            q_i_feat_flattens = q_i_feat_flattens.transpose(1, 2)
+            if self.feature_modal == 'image':
+                q_feat_flattens = q_i_feat_flattens
 
         if self.pos_encode_method == "image_coor":
             q_pos = self.q_position_embedding(q_ref_coors).transpose(1, 2)
@@ -162,8 +177,13 @@ class ACTR(nn.Module):
             srcs.append(s_proj)
             masks.append(mask)
 
-        q_enh_feats = self.transformer(srcs, masks, pos, q_feat_flattens,
-                                       q_pos, q_ref_coors, q_lidar_grid=lidar_grid)
+        q_enh_feats = self.transformer(srcs,
+                                       masks,
+                                       pos,
+                                       q_feat_flattens,
+                                       q_pos,
+                                       q_ref_coors,
+                                       q_lidar_grid=lidar_grid)
 
         return q_enh_feats
 
@@ -214,15 +234,17 @@ class IACTR(nn.Module):
         else:
             self.i_input_proj = nn.ModuleList([
                 nn.Sequential(
-                    nn.Conv2d(
-                        backbone.num_channels[0], hidden_dim, kernel_size=1),
+                    nn.Conv2d(backbone.num_channels[0],
+                              hidden_dim,
+                              kernel_size=1),
                     nn.GroupNorm(32, hidden_dim),
                 )
             ])
             self.p_input_proj = nn.ModuleList([
                 nn.Sequential(
-                    nn.Conv2d(
-                        backbone.num_channels[0], hidden_dim, kernel_size=1),
+                    nn.Conv2d(backbone.num_channels[0],
+                              hidden_dim,
+                              kernel_size=1),
                     nn.GroupNorm(32, hidden_dim),
                 )
             ])
@@ -407,13 +429,12 @@ class IACTRv2(IACTR):
             i_pos_t_l.append(i_pos_t)
 
         i_nz_ns_t_l = torch.cat(i_nz_ns_t_l, dim=1)
-        q_enh_feats = self.transformer(
-            p_srcs,
-            masks,
-            p_pos,
-            i_srcs_t_l,
-            i_pos_t_l,
-            q_ref_coors=i_nz_ns_t_l)
+        q_enh_feats = self.transformer(p_srcs,
+                                       masks,
+                                       p_pos,
+                                       i_srcs_t_l,
+                                       i_pos_t_l,
+                                       q_ref_coors=i_nz_ns_t_l)
 
         i_enh_feats = [
             torch.zeros_like(i_feats[s]) for s in range(len(i_feats))
@@ -555,13 +576,12 @@ class IACTRv3(IACTR):
             i_pos_t_l.append(i_pos_t)
 
         i_nz_ns_t_l = torch.cat(i_nz_ns_t_l, dim=1)
-        q_enh_feats = self.transformer(
-            p_srcs,
-            masks,
-            p_pos,
-            i_srcs_t_l,
-            i_pos_t_l,
-            q_ref_coors=i_nz_ns_t_l)
+        q_enh_feats = self.transformer(p_srcs,
+                                       masks,
+                                       p_pos,
+                                       i_srcs_t_l,
+                                       i_pos_t_l,
+                                       q_ref_coors=i_nz_ns_t_l)
 
         i_enh_feats = [
             torch.zeros_like(i_feats[s]) for s in range(len(i_feats))
@@ -619,16 +639,20 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
     args.pos_encode_method = model_cfg.pos_encode_method
     args.max_num_ne_voxel = model_cfg.max_num_ne_voxel
     args.num_feature_levels = len(model_cfg.num_channels)
+    args.feature_modal = model_cfg.get('feature_modal', 'lidar')
 
     model_class = model_dict[model_name]
-    transformer = build_deformable_transformer(args, model_name=model_name, lt_cfg=lt_cfg)
+    transformer = build_deformable_transformer(args,
+                                               model_name=model_name,
+                                               lt_cfg=lt_cfg)
 
-    model = model_class(
-        transformer,
-        num_feature_levels=args.num_feature_levels,
-        p_num_channels=model_cfg.get('p_num_channels', None),
-        num_channels=num_channels,
-        max_num_ne_voxel=args.max_num_ne_voxel,
-        pos_encode_method=args.pos_encode_method)
+    model = model_class(transformer,
+                        num_feature_levels=args.num_feature_levels,
+                        p_num_channels=model_cfg.get('p_num_channels', None),
+                        num_channels=num_channels,
+                        max_num_ne_voxel=args.max_num_ne_voxel,
+                        pos_encode_method=args.pos_encode_method,
+                        feature_modal=args.feature_modal
+                        )
 
     return model

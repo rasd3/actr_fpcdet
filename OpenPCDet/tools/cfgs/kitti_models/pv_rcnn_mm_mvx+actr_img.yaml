@@ -52,7 +52,7 @@ MODEL:
         USE_IMG: True
         FUSION_POS: [4]
         FUSION_METHOD: ACTR
-        FEATURE_LEVELS: [0]
+        NUM_FEATURE_LEVELS: 2
         LT_CFG: {
           npoint: 2048,
           radius: 2.0,
@@ -61,12 +61,13 @@ MODEL:
         }
         ACTR_CFG: {
           fusion_method: 'sum',
+          feature_modal: 'image',
           num_bins: 80,
           num_channels: [256], #, 512], #, 1024],
           query_num_feat: 64,
           num_enc_layers: 4,
           max_num_ne_voxel: 10000,
-          pos_encode_method: 'depth'
+          pos_encode_method: 'image_coor'
         }
         IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
 
@@ -260,7 +261,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 1
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
