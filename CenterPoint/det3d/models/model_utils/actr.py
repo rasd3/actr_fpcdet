@@ -148,6 +148,7 @@ class ACTR(nn.Module):
         # get query feature & ref points
         q_feat_flattens = v_feat
         q_ref_coors = grid
+        q_i_feat_flattens = None
         if self.feature_modal in ['image', 'hybrid']:
             assert v_i_feat is not None
             q_i_feat_flattens = self.i_input_proj(v_i_feat.transpose(1, 2))
@@ -179,7 +180,9 @@ class ACTR(nn.Module):
             masks.append(mask)
 
         q_enh_feats = self.transformer(srcs, masks, pos, q_feat_flattens,
-                                       q_pos, q_ref_coors, q_lidar_grid=lidar_grid)
+                                       q_pos, q_ref_coors, q_lidar_grid=lidar_grid,
+                                       q_i_feat_flatten=q_i_feat_flattens
+                                       )
 
         return q_enh_feats
 
@@ -636,6 +639,7 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
     args.max_num_ne_voxel = model_cfg.max_num_ne_voxel
     args.num_feature_levels = len(model_cfg.num_channels)
     args.feature_modal = model_cfg.get('feature_modal', 'lidar')
+    args.attn_layer = model_cfg.get('atten_layer', 'BiGate1D')
 
     model_class = model_dict[model_name]
     transformer = build_deformable_transformer(args, model_name=model_name, lt_cfg=lt_cfg)

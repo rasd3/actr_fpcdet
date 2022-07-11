@@ -85,6 +85,7 @@ class ACTR(nn.Module):
         for proj in self.input_proj:
             nn.init.xavier_uniform_(proj[0].weight, gain=1)
             nn.init.constant_(proj[0].bias, 0)
+        # add
         if feature_modal in ['image', 'hybrid']:
             self.i_input_proj = nn.Sequential(
                 nn.Conv1d(num_channels[0], hidden_dim, kernel_size=1),
@@ -92,7 +93,6 @@ class ACTR(nn.Module):
             )
             nn.init.xavier_uniform_(self.i_input_proj[0].weight, gain=1)
             nn.init.constant_(self.i_input_proj[0].bias, 0)
-        # add
         self.feature_modal = feature_modal
         self.max_num_ne_voxel = max_num_ne_voxel
         self.pos_encode_method = pos_encode_method
