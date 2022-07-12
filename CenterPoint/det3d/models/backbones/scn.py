@@ -209,7 +209,7 @@ class SpMiddleResNetFHDFusion(SpMiddleResNetFHD):
         x_conv1 = self.conv1(x)
 
         # fusion
-        x_conv1 = fuse_func(batch_dict, encoded_voxel=x_conv1, layer_name ='layer1', fuse_mode='sum', d_factor=1)
+        #  x_conv1 = fuse_func(batch_dict, encoded_voxel=x_conv1, layer_name ='layer1', fuse_mode='sum', d_factor=1)
 
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)
