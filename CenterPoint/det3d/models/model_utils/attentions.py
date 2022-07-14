@@ -93,6 +93,29 @@ class BiGateSum1D(nn.Module):
         feat2_scale = torch.sigmoid(feat2_map)
         return feat1 + (feat2 * feat1_scale), feat2 + (feat1 * feat2_scale)
 
+class BiGateSum1D_2(nn.Module):
+    def __init__(self, g_channel, g_channel_):
+        super(BiGateSum1D_2, self).__init__()
+        self.g_channel = g_channel
+        self.g_channel_ = g_channel_
+        self.b_conv1d = nn.Conv1d(self.g_channel,
+                                  1,
+                                  kernel_size=1,
+                                  stride=1,
+                                  padding=0)
+        self.a_conv1d = nn.Conv1d(self.g_channel_,
+                                  1,
+                                  kernel_size=1,
+                                  stride=1,
+                                  padding=0)
+    def forward(self, feat1, feat2):
+        fuse_feat = feat1.permute(0, 2, 1) + feat2.permute(0, 2, 1)
+        feat1_map = self.b_conv1d(fuse_feat).permute(0, 2, 1)
+        feat1_scale = torch.sigmoid(feat1_map)
+        feat2_map = self.a_conv1d(fuse_feat).permute(0, 2, 1)
+        feat2_scale = torch.sigmoid(feat2_map)
+        return feat1 + (feat2 * feat1_scale), feat2 + (feat1 * feat2_scale)
+
 def pts2img(coor, pts_feat, shape, pts, ret_depth=False):
     def visualize(pts_feat):
         pts_feat = pts_feat.detach().cpu().max(2)[0].numpy()
@@ -122,4 +145,5 @@ attn_dict = {
     'BiGate1D': BiGate1D,
     'BiGate1D_2': BiGate1D_2,
     'BiGateSum1D': BiGateSum1D,
+    'BiGateSum1D_2': BiGateSum1D_2,
 }
