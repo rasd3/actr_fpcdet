@@ -38,7 +38,7 @@ class DeformableTransformerACTR(nn.Module):
         model_name='ACTR',
         lt_cfg=None,
         feature_modal='lidar',
-        attn_layer='BiGate1D'
+        hybrid_cfg=None,
     ):
         super().__init__()
 
@@ -52,11 +52,11 @@ class DeformableTransformerACTR(nn.Module):
         if feature_modal in ['hybrid']:
             encoder_layer = DeformableTransformerFusionEncoderLayer(
                 self.d_model, self.q_model, dim_feedforward, dropout, activation,
-                num_feature_levels, nhead, enc_n_points, attn_layer)
+                num_feature_levels, nhead, enc_n_points, hybrid_cfg)
         else:
             encoder_layer = DeformableTransformerEncoderLayer(
                 self.d_model, self.q_model, dim_feedforward, dropout, activation,
-                num_feature_levels, nhead, enc_n_points, attn_layer)
+                num_feature_levels, nhead, enc_n_points, hybrid_cfg)
         self.encoder = DeformableTransformerEncoder(
             encoder_layer,
             num_encoder_layers,
@@ -283,7 +283,7 @@ class DeformableTransformerEncoderLayer(nn.Module):
                  n_levels=4,
                  n_heads=8,
                  n_points=4,
-                 attn_layer='BiGate1D',
+                 hybrid_cfg=None,
                  ):
         super().__init__()
 
@@ -346,14 +346,19 @@ class DeformableTransformerFusionEncoderLayer(nn.Module):
                  n_levels=4,
                  n_heads=8,
                  n_points=4,
-                 attn_layer='BiGate1D',
+                 hybrid_cfg=None,
                  ):
         super().__init__()
+
+        self.attn_layer = hybrid_cfg['attn_layer']
+        self.q_method = hybrid_cfg.get('q_method', None)
+        self.q_rep_place = hybrid_cfg.get('q_rep_place', None)
 
         # self attention
         self.d_model = d_model
         self.self_attn = MSDeformAttn(d_model, q_model, n_levels, n_heads,
-                                      n_points)
+                                      n_points, q_method=self.q_method,
+                                      q_rep_place=self.q_rep_place)
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
@@ -373,7 +378,7 @@ class DeformableTransformerFusionEncoderLayer(nn.Module):
         self.dropout5 = nn.Dropout(dropout)
         self.norm3 = nn.LayerNorm(d_model)
 
-        self.fusion_layer = attn_dict[attn_layer](q_model, q_model)
+        self.fusion_layer = attn_dict[self.attn_layer](q_model, q_model)
 
     @staticmethod
     def with_pos_embed(tensor, pos):
@@ -404,8 +409,10 @@ class DeformableTransformerFusionEncoderLayer(nn.Module):
                 ):
         # self attention
         src2 = self.self_attn(
-            self.with_pos_embed(q_i_feat, q_pos), reference_points, src,
-            spatial_shapes, level_start_index, padding_mask)
+            self.with_pos_embed(q_feat, q_pos), reference_points, src,
+            spatial_shapes, level_start_index, padding_mask,
+            i_query=self.with_pos_embed(q_i_feat, q_pos)
+            )
         q_i_feat = q_i_feat + self.dropout1(src2)
         q_i_feat = self.norm1(q_i_feat)
 
@@ -516,7 +523,7 @@ def _get_activation_fn(activation):
         return F.gelu
     if activation == "glu":
         return F.glu
-    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+    raise RuntimeError(f"activation should be relu/gelu, not {activation}.")
 
 
 def build_deformable_transformer(args, model_name='ACTR', lt_cfg=None):
@@ -540,5 +547,5 @@ def build_deformable_transformer(args, model_name='ACTR', lt_cfg=None):
         model_name=model_name,
         lt_cfg=lt_cfg,
         feature_modal=args.feature_modal,
-        attn_layer=args.attn_layer
+        hybrid_cfg=args.hybrid_cfg
     )

@@ -75,8 +75,8 @@ model = dict(
             fusion_method='sum',
             feature_modal='hybrid',
             hybrid_cfg=dict(
-                attn_layer='BiGateSum1D',
-                q_method='image',
+                attn_layer='BiGateSum1D_2',
+                q_method='gating',
                 q_rep_place=['weight', 'offset']
             ),
             num_bins=80,

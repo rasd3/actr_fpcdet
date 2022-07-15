@@ -639,7 +639,7 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
     args.max_num_ne_voxel = model_cfg.max_num_ne_voxel
     args.num_feature_levels = len(model_cfg.num_channels)
     args.feature_modal = model_cfg.get('feature_modal', 'lidar')
-    args.attn_layer = model_cfg.get('attn_layer', 'BiGate1D')
+    args.hybrid_cfg = model_cfg.get('hybrid_cfg', None)
 
     model_class = model_dict[model_name]
     transformer = build_deformable_transformer(args, model_name=model_name, lt_cfg=lt_cfg)
