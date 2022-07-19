@@ -131,7 +131,8 @@ class MSDeformAttn(nn.Module):
             assert self.q_rep_place is not None
             if self.q_method == 'gating':
                 g_query, g_i_query = self.q_gating(query, i_query)
-                new_query = g_query + g_i_query
+                # new_query = query * query_scale + i_query * i_query_scale
+                new_query = g_query + g_i_query - query - i_query
             elif self.q_method == 'sum':
                 new_query = query + i_query
             elif self.q_method == 'image':

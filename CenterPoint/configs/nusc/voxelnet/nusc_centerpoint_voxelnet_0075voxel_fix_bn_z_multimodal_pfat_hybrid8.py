@@ -77,7 +77,7 @@ model = dict(
             hybrid_cfg=dict(
                 attn_layer='BiGateSum1D_2',
                 q_method='gating',
-                q_rep_place=['weight', 'offset']
+                q_rep_place=['weight']
             ),
             num_bins=80,
             num_channels=[256],
