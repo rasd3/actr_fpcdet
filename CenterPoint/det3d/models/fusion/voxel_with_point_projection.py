@@ -89,6 +89,7 @@ class VoxelWithPointProjection(nn.Module):
         batch_size = len(batch_dict['image_shape'][self.image_list[0].lower()])
         if fuse_mode == 'pfat':
             img_feat_n = []
+            img_feat_n_ms = []
             img_grid_n = [[] for _ in range(batch_size)]
             v_feat_n = [[] for _ in range(batch_size)]
             v_i_feat_n = [[] for _ in range(batch_size)]
@@ -165,12 +166,26 @@ class VoxelWithPointProjection(nn.Module):
                                                          image_grid[point_mask], layer_name, 
                                                          point_inv[point_mask], fuse_mode=fuse_mode)
                     encoded_voxel.features[index_mask] = voxel_feat
+        if 'layer2_ori_feat2d' in batch_dict['img_feat']:
+            for cam_key in self.image_list:
+                cam_key = cam_key.lower()
+                for _idx in range(batch_size): #(len(batch_dict['image_shape'][cam_key])):
+                    img_feat_n_ms.append(batch_dict['img_feat']['layer2_ori_feat2d'][cam_key][_idx_key])
         if fuse_mode == 'pfat':
             # 6*b, c, w, h -> b*6, c, w, h
+            img_pfat = []
             img_feat_n = torch.stack(img_feat_n)
             c, w, h = img_feat_n.shape[1:]
             img_feat_n = img_feat_n.reshape(6, batch_size, c, w, h)
             img_feat_n = img_feat_n.transpose(1, 0).reshape(-1, c, w, h)
+            img_pfat.append(img_feat_n)
+            if len(img_feat_n_ms):
+                img_feat_n_ms = torch.stack(img_feat_n_ms)
+                c2, w2, h2 = img_feat_n_ms.shape[1:]
+                img_feat_n_ms = img_feat_n_ms.reshape(6, batch_size, c2, w2, h2)
+                img_feat_n_ms = img_feat_n_ms.transpose(1, 0).reshape(-1, c2, w2, h2)
+                img_pfat.append(img_feat_n_ms)
+
 
             # aggregate
             max_ne = max([img_grid_n[b][i].shape[0] for b in range(batch_size) for i in range(6)])
@@ -208,7 +223,7 @@ class VoxelWithPointProjection(nn.Module):
                         cv2.imwrite('./vis/%06d_original.png' % (b*6+i), img_o)
 
             img_grid_b /= torch.tensor(feat_shape[::-1]).cuda()
-            enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=[img_feat_n], 
+            enh_feat = self.pfat(v_feat=v_feat_b, grid=img_grid_b, i_feats=img_pfat, 
                                  lidar_grid=pts_inv_b, v_i_feat=v_i_feat_b)
 
             # split
