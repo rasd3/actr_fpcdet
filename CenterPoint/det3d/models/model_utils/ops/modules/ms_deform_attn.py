@@ -119,6 +119,7 @@ class MSDeformAttn(nn.Module):
         N, Len_q, _ = query.shape
         N, Len_in, _ = input_flatten.shape
         assert (input_spatial_shapes[:, 0] * input_spatial_shapes[:, 1]).sum() == Len_in
+        assert input_spatial_shapes.shape[0] == self.n_levels
 
         value = self.value_proj(input_flatten)
         if input_padding_mask is not None:

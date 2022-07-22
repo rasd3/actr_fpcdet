@@ -535,10 +535,13 @@ class VoxelBackBone8xFusion(nn.Module):
                           self.fusion_method[4:])
             actr_cfg = model_cfg.get("ACTR_CFG", None)
             lt_cfg = model_cfg.get("LT_CFG", None)
+            hybrid_cfg = model_cfg.get("HYBRID_CFG", None)
             assert actr_cfg is not None
             self.actr = build_actr(actr_cfg,
                                    model_name=model_name,
-                                   lt_cfg=lt_cfg)
+                                   lt_cfg=lt_cfg,
+                                   hybrid_cfg=hybrid_cfg
+                                   )
             self.max_num_nev = actr_cfg.get("max_num_ne_voxel", 26000)
         if self.aux_pts_loss:
             self.aux_model_cfg = model_cfg.get("AUX_PTS_MODEL_CFG", None)
@@ -988,10 +991,13 @@ class VoxelBackBone8xFusionv2(nn.Module):
                           self.fusion_method[4:])
             actr_cfg = model_cfg.get("ACTR_CFG", None)
             lt_cfg = model_cfg.get("LT_CFG", None)
+            hybrid_cfg = model_cfg.get("HYBRID_CFG", None)
             assert actr_cfg is not None
             self.actr = build_actr(actr_cfg,
                                    model_name=model_name,
-                                   lt_cfg=lt_cfg)
+                                   lt_cfg=lt_cfg,
+                                   hybrid_cfg=hybrid_cfg
+                                   )
             self.max_num_nev = actr_cfg.get("max_num_ne_voxel", 26000)
 
         self.attention = model_cfg.get("I_FUSION_METHOD", False)

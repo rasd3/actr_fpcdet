@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from torch.nn.init import xavier_uniform_, constant_
 
 from ..functions import MSDeformAttnFunction
+from ...attentions import attn_dict
 
 
 def _is_power_of_2(n):
@@ -30,7 +31,7 @@ def _is_power_of_2(n):
 
 
 class MSDeformAttn(nn.Module):
-    def __init__(self, d_model=256, q_model=256, n_levels=4, n_heads=8, n_points=4):
+    def __init__(self, d_model=256, q_model=256, n_levels=4, n_heads=8, n_points=4, q_method=None, q_rep_place=None):
         """
         Multi-Scale Deformable Attention Module
         :param d_model      hidden dimension
@@ -66,6 +67,10 @@ class MSDeformAttn(nn.Module):
         self.attention_weights = nn.Linear(d_model, n_heads * n_levels * n_points)
         self.value_proj = nn.Linear(d_model, d_model)
         self.output_proj = nn.Linear(d_model, d_model)
+        self.q_method = q_method
+        self.q_rep_place = q_rep_place
+        if q_method == 'gating':
+            self.q_gating = attn_dict['BiGateSum1D_2'](d_model, d_model)
 
         self._reset_parameters()
 
@@ -99,6 +104,7 @@ class MSDeformAttn(nn.Module):
         input_spatial_shapes,
         input_level_start_index,
         input_padding_mask=None,
+        i_query=None,
     ):
         """
         :param query                       (N, Length_{query}, C)
@@ -120,10 +126,30 @@ class MSDeformAttn(nn.Module):
         if input_padding_mask is not None:
             value = value.masked_fill(input_padding_mask[..., None], float(0))
         value = value.view(N, Len_in, self.n_heads, self.d_model // self.n_heads)
+
+        weight_query = query.clone()
+        if self.q_method is not None:
+            assert i_query is not None
+            assert self.q_rep_place is not None
+            if self.q_method == 'gating':
+                g_query, g_i_query = self.q_gating(query, i_query)
+                # new_query = query * query_scale + i_query * i_query_scale
+                new_query = g_query + g_i_query - query - i_query
+            elif self.q_method == 'sum':
+                new_query = query + i_query
+            elif self.q_method == 'image':
+                new_query = i_query
+            else:
+                raise NotImplementedError('q_method must be among ["gating", "sum", "image"]')
+
+            if 'offset' in self.q_rep_place:
+                query = new_query
+            if 'weight' in self.q_rep_place:
+                weight_query = new_query
         sampling_offsets = self.sampling_offsets(query).view(
             N, Len_q, self.n_heads, self.n_levels, self.n_points, 2
         )
-        attention_weights = self.attention_weights(query).view(
+        attention_weights = self.attention_weights(weight_query).view(
             N, Len_q, self.n_heads, self.n_levels * self.n_points
         )
         attention_weights = F.softmax(attention_weights, -1).view(

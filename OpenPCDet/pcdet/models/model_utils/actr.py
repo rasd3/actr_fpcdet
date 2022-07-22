@@ -183,7 +183,9 @@ class ACTR(nn.Module):
                                        q_feat_flattens,
                                        q_pos,
                                        q_ref_coors,
-                                       q_lidar_grid=lidar_grid)
+                                       q_lidar_grid=lidar_grid,
+                                       q_i_feat_flatten=q_i_feat_flattens
+                                       )
 
         return q_enh_feats
 
@@ -617,7 +619,7 @@ class MLP(nn.Module):
         return x
 
 
-def build(model_cfg, model_name='ACTR', lt_cfg=None):
+def build(model_cfg, model_name='ACTR', lt_cfg=None, hybrid_cfg=None):
     parser = argparse.ArgumentParser(
         "Deformable DETR training and evaluation script",
         parents=[get_args_parser()])
@@ -640,6 +642,7 @@ def build(model_cfg, model_name='ACTR', lt_cfg=None):
     args.max_num_ne_voxel = model_cfg.max_num_ne_voxel
     args.num_feature_levels = len(model_cfg.num_channels)
     args.feature_modal = model_cfg.get('feature_modal', 'lidar')
+    args.hybrid_cfg = hybrid_cfg
 
     model_class = model_dict[model_name]
     transformer = build_deformable_transformer(args,

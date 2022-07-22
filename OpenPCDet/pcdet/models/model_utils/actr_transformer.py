@@ -16,6 +16,7 @@ from pcdet.models.model_utils.pointformer import LocalTransformer
 
 from .ops.modules import MSDeformAttn
 from .actr_utils import inverse_sigmoid
+from .attentions import attn_dict
 
 
 class DeformableTransformerACTR(nn.Module):
@@ -36,6 +37,8 @@ class DeformableTransformerACTR(nn.Module):
         two_stage_num_proposals=300,
         model_name='ACTR',
         lt_cfg=None,
+        feature_modal='lidar',
+        hybrid_cfg=None,
     ):
         super().__init__()
 
@@ -45,9 +48,15 @@ class DeformableTransformerACTR(nn.Module):
         self.two_stage = two_stage
         self.two_stage_num_proposals = two_stage_num_proposals
 
-        encoder_layer = DeformableTransformerEncoderLayer(
-            self.d_model, self.q_model, dim_feedforward, dropout, activation,
-            num_feature_levels, nhead, enc_n_points)
+        self.feature_modal = feature_modal
+        if feature_modal in ['hybrid']:
+            encoder_layer = DeformableTransformerFusionEncoderLayer(
+                self.d_model, self.q_model, dim_feedforward, dropout, activation,
+                num_feature_levels, nhead, enc_n_points, hybrid_cfg)
+        else:
+            encoder_layer = DeformableTransformerEncoderLayer(
+                self.d_model, self.q_model, dim_feedforward, dropout, activation,
+                num_feature_levels, nhead, enc_n_points, hybrid_cfg)
         self.encoder = DeformableTransformerEncoder(
             encoder_layer,
             num_encoder_layers,
@@ -128,7 +137,9 @@ class DeformableTransformerACTR(nn.Module):
                 q_feat_flatten,
                 q_pos,
                 q_ref_coors,
-                q_lidar_grid=None):
+                q_lidar_grid=None,
+                q_i_feat_flatten=None,
+                ):
         # prepare input for encoder
         src_flatten = []
         mask_flatten = []
@@ -166,7 +177,9 @@ class DeformableTransformerACTR(nn.Module):
             q_pos=q_pos,
             q_feat=q_feat_flatten,
             q_reference_points=q_ref_coors,
-            q_lidar_grid=q_lidar_grid)
+            q_lidar_grid=q_lidar_grid,
+            q_i_feat=q_i_feat_flatten
+        )
 
         return memory
 
@@ -355,7 +368,9 @@ class DeformableTransformerEncoderLayer(nn.Module):
                  activation="relu",
                  n_levels=4,
                  n_heads=8,
-                 n_points=4):
+                 n_points=4,
+                 hybrid_cfg=None,
+                 ):
         super().__init__()
 
         # self attention
@@ -391,7 +406,9 @@ class DeformableTransformerEncoderLayer(nn.Module):
                 level_start_index,
                 padding_mask=None,
                 q_pos=None,
-                q_feat=None):
+                q_feat=None,
+                q_i_feat=None,
+                ):
         # self attention
         src2 = self.self_attn(
             self.with_pos_embed(q_feat, q_pos), reference_points, src,
@@ -402,7 +419,98 @@ class DeformableTransformerEncoderLayer(nn.Module):
         # ffn
         q_feat = self.forward_ffn(q_feat)
 
-        return q_feat
+        return q_feat, q_i_feat
+
+class DeformableTransformerFusionEncoderLayer(nn.Module):
+
+    def __init__(self,
+                 d_model=256,
+                 q_model=256,
+                 d_ffn=1024,
+                 dropout=0.1,
+                 activation="relu",
+                 n_levels=4,
+                 n_heads=8,
+                 n_points=4,
+                 hybrid_cfg=None,
+                 ):
+        super().__init__()
+
+        self.attn_layer = hybrid_cfg['attn_layer']
+        self.q_method = hybrid_cfg.get('q_method', None)
+        self.q_rep_place = hybrid_cfg.get('q_rep_place', None)
+
+        # self attention
+        self.d_model = d_model
+        self.self_attn = MSDeformAttn(d_model, q_model, n_levels, n_heads,
+                                      n_points, q_method=self.q_method,
+                                      q_rep_place=self.q_rep_place)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+
+        # i_ffn
+        self.linear1 = nn.Linear(d_model, d_ffn)
+        self.activation = _get_activation_fn(activation)
+        self.dropout2 = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ffn, d_model)
+        self.dropout3 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # p_ffn
+        self.linear3 = nn.Linear(d_model, d_ffn)
+        self.activation = _get_activation_fn(activation)
+        self.dropout4 = nn.Dropout(dropout)
+        self.linear4 = nn.Linear(d_ffn, d_model)
+        self.dropout5 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(d_model)
+
+        self.fusion_layer = attn_dict[self.attn_layer](q_model, q_model)
+
+    @staticmethod
+    def with_pos_embed(tensor, pos):
+        return tensor if pos is None else tensor + pos
+
+    def forward_i_ffn(self, src):
+        src2 = self.linear2(self.dropout2(self.activation(self.linear1(src))))
+        src = src + self.dropout3(src2)
+        src = self.norm2(src)
+        return src
+
+    def forward_p_ffn(self, src):
+        src2 = self.linear4(self.dropout4(self.activation(self.linear3(src))))
+        src = src + self.dropout5(src2)
+        src = self.norm3(src)
+        return src
+
+    def forward(self,
+                src,
+                pos,
+                reference_points,
+                spatial_shapes,
+                level_start_index,
+                padding_mask=None,
+                q_pos=None,
+                q_feat=None,
+                q_i_feat=None,
+                ):
+        # self attention
+        import pdb; pdb.set_trace()
+        src2 = self.self_attn(
+            self.with_pos_embed(q_feat, q_pos), reference_points, src,
+            spatial_shapes, level_start_index, padding_mask,
+            i_query=self.with_pos_embed(q_i_feat, q_pos)
+            )
+        q_i_feat = q_i_feat + self.dropout1(src2)
+        q_i_feat = self.norm1(q_i_feat)
+        
+        # Fusion
+        q_feat, q_i_feat = self.fusion_layer(q_feat, q_i_feat)
+
+        # ffn
+        q_i_feat = self.forward_i_ffn(q_i_feat)
+        q_feat = self.forward_p_ffn(q_feat)
+
+        return q_feat, q_i_feat
 
 
 class DeformableTransformerEncoder(nn.Module):
@@ -460,7 +568,9 @@ class DeformableTransformerEncoder(nn.Module):
                 q_feat=None,
                 q_pos=None,
                 q_reference_points=None,
-                q_lidar_grid=None):
+                q_lidar_grid=None,
+                q_i_feat=None,
+                ):
         output = src
         if q_reference_points is None:
             # for IACTR
@@ -474,7 +584,7 @@ class DeformableTransformerEncoder(nn.Module):
             if self.model_name == 'ACTRv2':
                 q_feat = self.lidar_attns[idx](q_lidar_grid,
                                                q_feat.permute(0, 2, 1))
-            q_feat = layer(
+            q_feat, q_i_feat = layer(
                 output,
                 pos,
                 reference_points,
@@ -482,7 +592,9 @@ class DeformableTransformerEncoder(nn.Module):
                 level_start_index,
                 padding_mask,
                 q_pos=q_pos,
-                q_feat=q_feat)
+                q_feat=q_feat,
+                q_i_feat=q_i_feat,
+            )
 
         return q_feat
 
@@ -521,4 +633,7 @@ def build_deformable_transformer(args, model_name='ACTR', lt_cfg=None):
         two_stage=args.two_stage,
         two_stage_num_proposals=args.num_queries,
         model_name=model_name,
-        lt_cfg=lt_cfg)
+        lt_cfg=lt_cfg,
+        feature_modal=args.feature_modal,
+        hybrid_cfg=args.hybrid_cfg
+    )
