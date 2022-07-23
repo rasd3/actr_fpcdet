@@ -57,14 +57,14 @@ model = dict(
             name='SemDeepLabV3',
             backbone='ResNet50',
             num_class=21, # pretrained on COCO 
-            args={"feat_extract_layer": ["layer1", "layer2"],
+            args={"feat_extract_layer": ["layer1"],
                   "pretrained_path": "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"},
             channel_reduce={
-                "in_channels": [256, 512],
-                "out_channels": [16, 16],
-                "kernel_size": [1, 1],
-                "stride": [1, 1],
-                "bias": [False, False]
+                "in_channels": [256],
+                "out_channels": [16],
+                "kernel_size": [1],
+                "stride": [1],
+                "bias": [False]
             },
         ),
     ),
@@ -80,7 +80,7 @@ model = dict(
                 q_rep_place=['weight']
             ),
             num_bins=80,
-            num_channels=[256, 512],
+            num_channels=[256],
             query_num_feat=128,
             num_enc_layers=2,
             max_num_ne_voxel=26000,
