@@ -147,6 +147,7 @@ class ACTR(nn.Module):
         # get query feature & ref points
         q_feat_flattens = v_feat
         q_ref_coors = grid
+        q_i_feat_flattens = None
         if self.feature_modal in ['image', 'hybrid']:
             assert v_i_feat is not None
             q_i_feat_flattens = self.i_input_proj(v_i_feat.transpose(1, 2))

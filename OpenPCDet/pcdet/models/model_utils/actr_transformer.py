@@ -494,7 +494,6 @@ class DeformableTransformerFusionEncoderLayer(nn.Module):
                 q_i_feat=None,
                 ):
         # self attention
-        import pdb; pdb.set_trace()
         src2 = self.self_attn(
             self.with_pos_embed(q_feat, q_pos), reference_points, src,
             spatial_shapes, level_start_index, padding_mask,
