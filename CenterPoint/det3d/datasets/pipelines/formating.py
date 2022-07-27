@@ -28,7 +28,8 @@ class Reformat(object):
             shape=voxels["shape"],
             num_points=voxels["num_points"],
             num_voxels=voxels["num_voxels"],
-            coordinates=voxels["coordinates"]
+            coordinates=voxels["coordinates"],
+            image_scale=res['image_scale']
         )
 
         if res['calib'] is not None:

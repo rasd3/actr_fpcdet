@@ -304,6 +304,7 @@ class Preprocess(object):
                 dtype=np.int32,
             )
             gt_dict["gt_classes"] = gt_classes
+            gt_dict['gt_boxes_no_aug'] = np.copy(gt_dict['gt_boxes'])
 
             res['aug_matrix_inv'] = {}
             if 'flip' in self.augmentation:
@@ -640,8 +641,10 @@ class AssignLabel(object):
             boxes = flatten(gt_dict['gt_boxes'])
             classes = merge_multi_group_label(gt_dict['gt_classes'], num_classes_by_task)
 
+            boxes_noaug = np.array(gt_dict['gt_boxes_no_aug'])
             if res["type"] == "NuScenesDataset":
                 gt_boxes_and_cls = np.zeros((max_objs, 10), dtype=np.float32)
+                gt_boxes_noaug = np.zeros((max_objs, 9), dtype=np.float32)
             elif res['type'] == "WaymoDataset":
                 gt_boxes_and_cls = np.zeros((max_objs, 10), dtype=np.float32)
             else:
@@ -655,8 +658,11 @@ class AssignLabel(object):
             boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 8, 6, 7, 9]]
             gt_boxes_and_cls[:num_obj] = boxes_and_cls
 
+            num_obj_ = len(boxes_noaug)
+            gt_boxes_noaug[:num_obj_] = boxes_noaug
             example.update({'gt_boxes_and_cls': gt_boxes_and_cls})
 
+            example.update({'gt_boxes_noaug': gt_boxes_noaug})
             example.update({'hm': hms, 'anno_box': anno_boxs, 'ind': inds, 'mask': masks, 'cat': cats})
         else:
             pass

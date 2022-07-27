@@ -126,10 +126,10 @@ class VoxelNetFusion(VoxelNet):
         self.network2d = builder.build_network2d(network2d)
         self.fusion = builder.build_fusion(fusion)
 
-    def extract_feat(self, data, batch_dict):
+    def extract_feat(self, data, batch_dict, example):
         input_features = self.reader(data["features"], data["num_voxels"])
         x, voxel_feature = self.backbone(
-            input_features, batch_dict, data["coors"], data["batch_size"], data["input_shape"],
+            input_features, batch_dict, data["coors"], data["batch_size"], data["input_shape"], example,
             fuse_func=self.fusion
         )
         if self.with_neck:
@@ -173,11 +173,11 @@ class VoxelNetFusion(VoxelNet):
                 batch_dict['aug_matrix_inv'] = example['aug_matrix_inv']
 
         start_time = time.time()
-        x, _ = self.extract_feat(data, batch_dict)
+        x, _ = self.extract_feat(data, batch_dict, example)
         preds = self.bbox_head(x)
 
         if return_loss:
-            return self.bbox_head.loss(example, preds)
+            return self.bbox_head.loss(example, preds, batch_dict)
         else:
             boxes = self.bbox_head.predict(example, preds, self.test_cfg)
             end_time = time.time()

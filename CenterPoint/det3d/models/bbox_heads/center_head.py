@@ -247,7 +247,7 @@ class CenterHead(nn.Module):
         y = torch.clamp(x.sigmoid_(), min=1e-4, max=1-1e-4)
         return y
 
-    def loss(self, example, preds_dicts, **kwargs):
+    def loss(self, example, preds_dicts, batch_dict, **kwargs):
         rets = []
         for task_id, preds_dict in enumerate(preds_dicts):
             # heatmap focal loss
@@ -276,6 +276,15 @@ class CenterHead(nn.Module):
             loc_loss = (box_loss*box_loss.new_tensor(self.code_weights)).sum()
 
             loss = hm_loss + self.weight*loc_loss
+
+            if "auxseg_loss" in batch_dict:
+                for idx in range(len(batch_dict['auxseg_loss'])):
+                    if idx == 0:
+                        auxseg_loss = batch_dict['auxseg_loss'][idx][task_id]
+                    else:
+                        auxseg_loss += batch_dict['auxseg_loss'][idx][task_id]
+                ret.update({'auxseg_loss' : auxseg_loss})
+                loss += auxseg_loss
 
             ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss':loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': example['mask'][task_id].float().sum()})
 
@@ -503,4 +512,4 @@ def _circle_nms(boxes, min_radius, post_max_size=83):
 
     keep = torch.from_numpy(keep).long().to(boxes.device)
 
-    return keep  
+    return keep

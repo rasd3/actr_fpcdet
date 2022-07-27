@@ -197,7 +197,7 @@ class SpMiddleResNetFHDFusion(SpMiddleResNetFHD):
     ):
         super(SpMiddleResNetFHDFusion, self).__init__(num_input_features, norm_cfg, name, **kwargs)
 
-    def forward(self, voxel_features, batch_dict, coors, batch_size, input_shape, fuse_func=None):
+    def forward(self, voxel_features, batch_dict, coors, batch_size, input_shape, example, fuse_func=None):
         # input: # [41, 1600, 1408]
         sparse_shape = np.array(input_shape[::-1]) + [1, 0, 0]
 
@@ -209,7 +209,7 @@ class SpMiddleResNetFHDFusion(SpMiddleResNetFHD):
         x_conv1 = self.conv1(x)
 
         # fusion
-        #  x_conv1 = fuse_func(batch_dict, encoded_voxel=x_conv1, layer_name ='layer1', fuse_mode='sum', d_factor=1)
+        #  x_conv1 = fuse_func(batch_dict, example, encoded_voxel=x_conv1, layer_name ='layer1', fuse_mode='sum', d_factor=1)
 
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)
@@ -217,7 +217,7 @@ class SpMiddleResNetFHDFusion(SpMiddleResNetFHD):
         #  x_conv3 = fuse_func(batch_dict, encoded_voxel=x_conv3, layer_name ='layer1_ori', fuse_mode='pfat', d_factor=4)
         x_conv4 = self.conv4(x_conv3)
         if fuse_func.fuse_mode == 'pfat':
-            x_conv4 = fuse_func(batch_dict, encoded_voxel=x_conv4, layer_name ='layer1_ori', fuse_mode='pfat', d_factor=8)
+            x_conv4 = fuse_func(batch_dict, example, encoded_voxel_list=[x_conv2, x_conv3, x_conv4], layer_name ='layer1_ori', fuse_mode='pfat', d_factor_list=[2, 4, 8])
 
         ret = self.extra_conv(x_conv4)
 

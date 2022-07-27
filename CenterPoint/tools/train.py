@@ -59,6 +59,7 @@ def parse_args():
         action="store_true",
         help="automatically scale lr with the number of gpus",
     )
+    parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     args = parser.parse_args()
     if "LOCAL_RANK" not in os.environ:
         os.environ["LOCAL_RANK"] = str(args.local_rank)
@@ -91,7 +92,10 @@ def main():
 
     if distributed:
         torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend="nccl", init_method="env://")
+        torch.distributed.init_process_group(backend="nccl", 
+                                             init_method='tcp://127.0.0.1:%d' % args.tcp_port,
+                                             rank=args.local_rank,
+                                             world_size=num_gpus)
 
         cfg.gpus = torch.distributed.get_world_size()
 
