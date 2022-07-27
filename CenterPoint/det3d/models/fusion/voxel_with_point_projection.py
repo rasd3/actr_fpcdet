@@ -163,7 +163,7 @@ class VoxelWithPointProjection(nn.Module):
                                                        image_scale=self.image_scale,
                                                        batch_dict=batch_dict, 
                                                        cam_key=cam_key,
-                                                       d_factor=d_factor[conv_idx]
+                                                       d_factor=d_factor_list[conv_idx]
                                                        )
                 projection_dict_list.append(projection_dict)
 
