@@ -92,10 +92,10 @@ def main():
 
     if distributed:
         torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend="nccl", 
-                                             init_method='tcp://127.0.0.1:%d' % args.tcp_port,
-                                             rank=args.local_rank,
-                                             world_size=num_gpus)
+        #torch.distributed.init_process_group(backend="nccl", init_method="env://")
+        num_gpus = torch.cuda.device_count()
+        torch.distributed.init_process_group(backend="nccl", init_method='tcp://127.0.0.1:%d' % args.tcp_port,\
+        rank=args.local_rank,world_size=num_gpus)
 
         cfg.gpus = torch.distributed.get_world_size()
 
@@ -111,7 +111,6 @@ def main():
         # copy important files to backup
         backup_dir = os.path.join(cfg.work_dir, "det3d")
         os.makedirs(backup_dir, exist_ok=True)
-        os.system('cp %s %s/' % (args.config, cfg.work_dir))
         # os.system("cp -r * %s/" % backup_dir)
         # logger.info(f"Backup source files to {cfg.work_dir}/det3d")
 

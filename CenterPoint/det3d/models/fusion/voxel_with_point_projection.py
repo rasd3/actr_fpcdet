@@ -278,8 +278,11 @@ class VoxelWithPointProjection(nn.Module):
                         if self.seg_cfg is not None:
                             if 'gt_boxes_noaug' in example:
                                 batch_dict = self.generate_2D_GT(cam_key, _idx, example, batch_dict)
-                                auxloss_list, seg_prob = self.seg(image_feat, batch_dict, cam_key, _idx)
+                            auxloss_list, seg_prob = self.seg(image_feat, batch_dict, cam_key, _idx)
+                            if 'gt_boxes_noaug' in example:    
                                 auxloss_n[_idx].append(auxloss_list)
+                        else:
+                            seg_prob = None
                         image_feat = self.ifat(image_feat,
                                                [voxel_feat_list[idx][voxel_mask_list[idx]] for idx in range(len(voxel_feat_list))], 
                                                [image_grid_list[idx][point_mask_list[idx]] for idx in range(len(voxel_feat_list))],

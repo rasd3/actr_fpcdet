@@ -30,11 +30,13 @@ class Gaussian(nn.Module):
         batch_dict['fg_pred'] = fg_pred
         eps = 1e-8
         input_soft = F.softmax(fg_pred, dim=1) + eps
-        self.auxloss = self.AUX_LOSS(batch_dict, cam_key, _idx)
+        if "gt_boxes2d" in batch_dict:
+            self.auxloss = self.AUX_LOSS(batch_dict, cam_key, _idx)
+        else:
+            self.auxloss = None
         return self.auxloss, input_soft
 
 
 __all__ = {
     "Gaussian": Gaussian,
-    
 }

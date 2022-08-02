@@ -16,3 +16,5 @@ venv/
 work_dirs/
 nuscenes-devkit/
 vis/
+.vscode/
+apex/

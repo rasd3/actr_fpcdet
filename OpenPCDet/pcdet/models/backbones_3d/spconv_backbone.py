@@ -551,14 +551,12 @@ class VoxelBackBone8xFusion(nn.Module):
                     self.feature_levels[0] : self.feature_levels[0]
                     + len(self.feature_levels)
                 ],
-                pts_channel_list=self.ifat_cfg["pts_num_channels"][
-                    self.feature_levels[0] : self.feature_levels[0]
-                    + len(self.feature_levels)
-                ],
+                pts_channel_list=self.ifat_cfg["pts_num_channels"],
                 sparse_shape=self.sparse_shape,
                 voxel_size=self.voxel_size,
                 point_cloud_range=self.point_cloud_range,
                 inv_idx=self.inv_idx,
+                pts_idx=self.ifat_cfg['pts_idx']
             )
         if self.aux_pts_loss:
             self.aux_model_cfg = model_cfg.get("AUX_PTS_MODEL_CFG", None)

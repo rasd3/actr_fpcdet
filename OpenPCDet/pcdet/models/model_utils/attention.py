@@ -87,7 +87,7 @@ class devil(nn.Module):
 
 
 class BasicGate(nn.Module):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGate, self).__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
@@ -177,7 +177,7 @@ class BasicGate(nn.Module):
         return new_img_feats
 
 class BasicGatev2(nn.Module):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev2, self).__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
@@ -258,7 +258,7 @@ class BasicGatev2(nn.Module):
         return new_img_feats
 
 class BasicGatev3(BasicGatev2):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev3, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         
     def forward(self, x_rgb, x_list, batch_dict):
@@ -311,7 +311,7 @@ class BasicGatev3(BasicGatev2):
         return new_img_feats
 
 class Patch(BasicGatev2):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(Patch, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         self.spatial_basic_list = []
         self.channel_reduce_list = []
@@ -388,7 +388,7 @@ class Patch(BasicGatev2):
         return new_img_feats
 
 class Patchv2(BasicGatev2):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(Patchv2, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         self.spatial_basic_list = []
         self.channel_reduce_list = []
@@ -466,13 +466,13 @@ class Patchv2(BasicGatev2):
         return new_img_feats
 
 class BasicGatev4(nn.Module):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev4, self).__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
         self.inv_idx = inv_idx
         self.img_channel_list = img_channel_list
-        self.pts_channel_list = pts_channel_list
+        self.pts_channel_list = [pts_channel_list[0]]
         self.sparse_shape = sparse_shape
         self.spatial_basic_list = []
         self.channel_reduce_list = []
@@ -548,7 +548,7 @@ class BasicGatev4(nn.Module):
         return new_img_feats
 
 class BasicGatev5(BasicGatev4):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev5, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         
     def forward(self, x_rgb, x_list, batch_dict):
@@ -602,7 +602,7 @@ class BasicGatev5(BasicGatev4):
         return new_img_feats
 
 class BasicGatev5_Patch(BasicGatev4):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev5_Patch, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         self.spatial_basic_list = []
         self.channel_reduce_list = []
@@ -679,7 +679,7 @@ class BasicGatev5_Patch(BasicGatev4):
         return new_img_feats
 
 class BasicGate_Patch(BasicGatev4):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGate_Patch, self).__init__(img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv)
         self.spatial_basic_list = []
         for scale in range(len(self.pts_channel_list)):
@@ -754,8 +754,92 @@ class BasicGate_Patch(BasicGatev4):
 
         return new_img_feats
 
+class Basicgate_patch_iv_multivoxel(nn.Module):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
+        super(Basicgate_patch_iv_multivoxel, self).__init__()
+        self.voxel_idx = pts_idx
+        self.voxel_size = voxel_size
+        self.point_cloud_range = point_cloud_range
+        self.inv_idx = inv_idx
+        self.img_channel_list = img_channel_list
+        self.pts_channel_list = pts_channel_list
+        
+        self.sparse_shape = sparse_shape
+        self.spatial_basic_list = []
+        self.channel_reduce_list = []
+        
+        self.reduced_dim2=nn.Conv2d(self.pts_channel_list[self.voxel_idx[-1]] + 3,self.pts_channel_list[self.voxel_idx[-1]] + 3 ,kernel_size=1,stride=1,padding=0)
+        self.reduced_dim3=nn.Conv2d(self.img_channel_list[0],1,kernel_size=1,stride=1,padding=0)
+
+        self.spatial_basic = nn.Conv2d(self.pts_channel_list[self.voxel_idx[-1]]+3, 1, kernel_size=3, stride=1, padding=1)
+        self.reduced_dim = []
+        for conv_idx in range(self.voxel_idx[-1]):
+            self.reduced_dim.append(
+                nn.Conv2d(self.pts_channel_list[conv_idx] + 3,
+                self.pts_channel_list[self.voxel_idx[-1]] + 3, kernel_size=1,stride=1,padding=0)
+            )
+        self.reduced_dim = nn.Sequential(*self.reduced_dim)
+
+    def forward(self, x_rgb, x_list, batch_dict):
+        batch_size = batch_dict['batch_size']
+        calibs = batch_dict['calib']
+        device = x_rgb[0].device
+        img_shapes = [
+            torch.tensor(f.shape[2:], device=device) for f in x_rgb
+        ]
+        h, w = batch_dict['images'].shape[2:]
+        
+        pts_img_list = []
+        for conv_idx in range(len(self.pts_channel_list)):
+            batch_img_list = []
+            batch_index = x_list[conv_idx].indices[:, 0]
+            ratio = self.sparse_shape[1] / x_list[conv_idx].spatial_shape[1]
+            spatial_indices = x_list[conv_idx].indices[:, 1:] * ratio
+            voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+            
+            for b in range(batch_size):
+                calib = calibs[b]
+                voxels_3d_batch = voxels_3d[batch_index==b]
+                voxel_features_sparse = x_list[conv_idx].features[batch_index==b]
+
+                # Reverse the point cloud transformations to the original coords.
+                if 'noise_scale' in batch_dict:
+                    voxels_3d_batch[:, :3] /= batch_dict['noise_scale'][b]
+                if 'noise_rot' in batch_dict:
+                    voxels_3d_batch = common_utils.rotate_points_along_z(voxels_3d_batch[:, self.inv_idx].unsqueeze(0), -batch_dict['noise_rot'][b].unsqueeze(0))[0, :, self.inv_idx]
+                if 'flip_x' in batch_dict:
+                    voxels_3d_batch[:, 1] *= -1 if batch_dict['flip_x'][b] else 1
+                if 'flip_y' in batch_dict:
+                    voxels_3d_batch[:, 2] *= -1 if batch_dict['flip_y'][b] else 1
+                voxel_features_sparse = torch.cat([x_list[conv_idx].features[batch_index==b],voxels_3d_batch],dim=-1)
+
+                voxels_2d, _ = calib.lidar_to_img(voxels_3d_batch[:, self.inv_idx].cpu().numpy())
+                voxels_2d_norm = voxels_2d / np.array([w, h])
+                voxels_2d_norm_tensor = torch.Tensor(voxels_2d_norm).to(device)
+                voxels_2d_norm_tensor = torch.clamp(voxels_2d_norm_tensor, min=0.0, max=1.0)
+                pt_img, _ = pts2img(voxels_2d_norm_tensor, voxel_features_sparse, img_shapes[0], voxels_3d_batch)
+                batch_img_list.append(pt_img.unsqueeze(0))
+            pts_img_list.append(torch.cat(batch_img_list))
+        
+        for idx_ in self.voxel_idx:
+            if idx_ != self.voxel_idx[-1]:
+                pts2img_feat = self.reduced_dim[idx_].to(device=device)(pts_img_list[idx_])
+            if idx_ == self.voxel_idx[0]:
+                enhanced_pts_feat = pts2img_feat
+            else:
+                enhanced_pts_feat += pts_img_list[idx_]
+        
+        enhanced_pts_feat = self.reduced_dim2.to(device=device)(enhanced_pts_feat)
+        gated_img_feat = self.reduced_dim3.to(device=device)(x_rgb[0])
+        gated_img_feat = gated_img_feat.expand(batch_size,self.pts_channel_list[self.voxel_idx[-1]] + 3 , enhanced_pts_feat.shape[2],enhanced_pts_feat.shape[3])
+        fused_feature = gated_img_feat+enhanced_pts_feat
+        fused_feature = self.spatial_basic.to(device=device)(fused_feature)
+        attention_map = torch.sigmoid(fused_feature)
+        return [x_rgb[0] * attention_map]
+
+
 class BasicGatev6(nn.Module):
-    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, num_conv = 2):
+    def __init__(self, img_channel_list, pts_channel_list, sparse_shape, voxel_size, point_cloud_range, inv_idx, pts_idx, num_conv = 2):
         super(BasicGatev6, self).__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
@@ -894,6 +978,7 @@ __all__ = {
     'BasicGatev6': BasicGatev6,
     'BasicGatev5_Patch': BasicGatev5_Patch,
     "BasicGate_Patch": BasicGate_Patch,
+    "Basicgate_patch_iv_multivoxel": Basicgate_patch_iv_multivoxel,
     'BiGate': BiGate,
     'Patch': Patch,
     'Patchv2': Patchv2

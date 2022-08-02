@@ -6,6 +6,61 @@ import numpy as np
 from ..losses.auxseg_loss import SEGLOSS
 import copy
 
+class Basicgate_patch_iv_multivoxel(nn.Module):
+    def __init__(self, **kwarg):
+        super(Basicgate_patch_iv_multivoxel, self).__init__()
+        self.img_num_channel = kwarg['img_num_channel']
+        self.pts_num_channel = kwarg['pts_num_channel'] + 3
+        self.voxel_feat_channel = kwarg['voxel_feat_channel']
+        self.voxel_idx = kwarg['voxel_idx']
+        if len(self.voxel_idx) == 1:
+            self.pts_num_channel = self.voxel_feat_channel[self.voxel_idx[0]]
+        
+        self.reduced_dim2=nn.Conv2d(self.voxel_feat_channel[self.voxel_idx[-1]] + 3,self.voxel_feat_channel[self.voxel_idx[-1]] + 3 ,kernel_size=1,stride=1,padding=0)
+        self.reduced_dim3=nn.Conv2d(self.img_num_channel,1,kernel_size=1,stride=1,padding=0)
+
+        self.spatial_basic = nn.Conv2d(self.voxel_feat_channel[self.voxel_idx[-1]]+3, 1, kernel_size=3, stride=1, padding=1)
+        self.reduced_dim = []
+        for conv_idx in range(self.voxel_idx[-1]):
+            self.reduced_dim.append(
+                nn.Conv2d(self.voxel_feat_channel[conv_idx] + 3,
+                self.voxel_feat_channel[self.voxel_idx[-1]] + 3, kernel_size=1,stride=1,padding=0)
+            )
+        self.reduced_dim = nn.Sequential(*self.reduced_dim)
+
+    def forward(self, img_feat, voxel_feat, img_grid, voxel_coord,  batch_dict, cam_key, _idx, seg_prob):
+        
+        device = img_feat[0].device
+        img_shapes = torch.tensor(img_feat.shape[1:], device = device)
+
+        if len(self.voxel_idx) == 1:
+            voxel_idx = self.voxel_idx[0]
+            voxel_features = voxel_feat[voxel_idx]
+            voxel_features = torch.cat([voxel_features,voxel_coord[voxel_idx]],dim=-1)
+            pt_img = pts2img(img_grid[voxel_idx], voxel_features, img_shapes, batch_dict, cam_key, _idx, img_feat)
+        else:
+            for conv_idx in self.voxel_idx:
+                voxel_features = voxel_feat[conv_idx]
+                voxel_features = torch.cat([voxel_features,voxel_coord[conv_idx]],dim=-1)
+                pts2img_feat = pts2img(img_grid[conv_idx], voxel_features, img_shapes, batch_dict, cam_key, _idx, img_feat)
+                if conv_idx != self.voxel_idx[-1]:
+                    pts2img_feat = self.reduced_dim[conv_idx].to(device=device)(pts2img_feat.unsqueeze(0).contiguous()).squeeze(0).contiguous()
+                if conv_idx == self.voxel_idx[0]:
+                    pt_img = pts2img_feat
+                else:
+                    pt_img += pts2img_feat
+
+        #fused_feature = torch.cat([img_feat, pt_img], dim=0)
+        pt_img = self.reduced_dim2.to(device=device)(pt_img.unsqueeze(0).contiguous()).squeeze(0).contiguous()
+        gated_img_feat = self.reduced_dim3.to(device=device)(img_feat.unsqueeze(0).contiguous()).squeeze(0).contiguous()
+        gated_img_feat = gated_img_feat.expand(self.voxel_feat_channel[self.voxel_idx[-1]] + 3 , pt_img.shape[1],pt_img.shape[2])
+        #fused_feature = img_feat+pt_img
+        fused_feature = gated_img_feat+pt_img
+        fused_feature = self.spatial_basic.to(device=device)(fused_feature.unsqueeze(0).contiguous()).squeeze(0).contiguous()
+        attention_map = torch.sigmoid(fused_feature)
+        return img_feat * attention_map
+
+
 class Basicgate_cvf(nn.Module):
     def __init__(self, **kwarg):
         super(Basicgate_cvf, self).__init__()
@@ -418,6 +473,7 @@ __all__ = {
     "Basicgate_cvf": Basicgate_cvf,
     "Foreground_fusion": Foreground_fusion,
     "Weighted_fusion": Weighted_fusion,
+    "Basicgate_patch_iv_multivoxel": Basicgate_patch_iv_multivoxel,
     "Coord_Patched_Basicgate": Coord_Patched_Basicgate,
     "BasicGate": BasicGate,
     "BasicGatev2": BasicGatev2,

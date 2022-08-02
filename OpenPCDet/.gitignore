@@ -14,3 +14,4 @@ venv/
 *.bin
 output
 pcdet/version.py
+.vscode/

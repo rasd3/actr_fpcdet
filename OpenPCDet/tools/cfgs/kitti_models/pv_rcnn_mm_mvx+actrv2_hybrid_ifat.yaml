@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
-    _BASE_CONFIG_: /media/spalab/sdb/kypark/actr_fpcdet_0725/actr_fpcdet/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
     GET_ITEM_LIST: ["images", "points", "calib_matricies", "gt_boxes2d"]
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
@@ -74,10 +74,11 @@ MODEL:
           q_method: 'sum',
           q_rep_place: ['weight']
         }
-        I_FUSION_METHOD: BasicGate
+        I_FUSION_METHOD: Basicgate_patch_iv_multivoxel
         IFAT_CFG: {
             img_num_channels: [256, 512, 1024],
             pts_num_channels: [32, 64, 64],
+            pts_idx: [0,2]
 
         }
         IMG_PRETRAIN: "checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
